@@ -1,11 +1,11 @@
 
-import { Patient, Medicine, StockMovement, Sale, Supplier, PurchaseOrder, SystemSettings } from './types';
+import { Customer, Menu Item, StockMovement, Sale, Supplier, PurchaseOrder, SystemSettings } from './types';
 
 // Default initial data for seeding if localStorage is empty
 const INITIAL_SUPPLIERS: Supplier[] = [
   {
     id: 'SUP-001',
-    name: 'Lumbini Pharma Distributors',
+    name: 'Lumbini restoa Distributors',
     contactName: 'Dinesh Sharma',
     phone: '9857022441',
     address: 'Butwal-6, Hospital Road, Rupandehi'
@@ -19,14 +19,14 @@ const INITIAL_SUPPLIERS: Supplier[] = [
   },
   {
     id: 'SUP-003',
-    name: 'Narayani Medicine Wholesalers',
+    name: 'Narayani Menu Item Wholesalers',
     contactName: 'Ramesh Chaudhary',
     phone: '9804511223',
     address: 'Nepalgunj Ward-12, Banke'
   }
 ];
 
-const INITIAL_MEDICINES = (suppliers: Supplier[]): Medicine[] => [
+const INITIAL_Menu Items = (suppliers: Supplier[]): Menu Item[] => [
   {
     id: 'MED-101',
     name: 'Paracetamol 500mg',
@@ -141,7 +141,7 @@ const INITIAL_MEDICINES = (suppliers: Supplier[]): Medicine[] => [
   }
 ];
 
-const INITIAL_PATIENTS: Patient[] = [
+const INITIAL_Customers: Customer[] = [
   {
     id: 'PT-2026-0001',
     fullName: 'Ram Bahadur Thapa',
@@ -182,7 +182,7 @@ const INITIAL_PATIENTS: Patient[] = [
     phone: '9812456789',
     address: 'Golpark, Butwal-4, Rupandehi',
     bloodType: 'B+',
-    allergies: ['Sulfa drugs'],
+    allergies: ['Sulfa Foods'],
     chronicConditions: ['Diabetes'],
     preferredLanguage: 'Nepali',
     createdAt: '2026-03-01T09:00:00Z'
@@ -204,13 +204,13 @@ const INITIAL_PATIENTS: Patient[] = [
   }
 ];
 
-const INITIAL_SALES = (medicines: Medicine[]): Sale[] => [
+const INITIAL_SALES = (Menu Items: Menu Item[]): Sale[] => [
   {
     id: 'TXN-1001',
-    patientId: 'PT-2026-0001',
+    CustomerId: 'PT-2026-0001',
     items: [
       {
-        medicineId: 'MED-101',
+        Menu ItemId: 'MED-101',
         name: 'Paracetamol 500mg',
         dosage: '500mg',
         quantity: 20,
@@ -218,7 +218,7 @@ const INITIAL_SALES = (medicines: Medicine[]): Sale[] => [
         totalPrice: 300.0
       },
       {
-        medicineId: 'MED-102',
+        Menu ItemId: 'MED-102',
         name: 'Pantocid 40mg',
         dosage: '40mg',
         quantity: 10,
@@ -237,10 +237,10 @@ const INITIAL_SALES = (medicines: Medicine[]): Sale[] => [
   },
   {
     id: 'TXN-1002',
-    patientId: 'PT-2026-0003',
+    CustomerId: 'PT-2026-0003',
     items: [
       {
-        medicineId: 'MED-104',
+        Menu ItemId: 'MED-104',
         name: 'Cetirizine 10mg',
         dosage: '10mg',
         quantity: 30,
@@ -248,7 +248,7 @@ const INITIAL_SALES = (medicines: Medicine[]): Sale[] => [
         totalPrice: 300.0
       },
       {
-        medicineId: 'MED-106',
+        Menu ItemId: 'MED-106',
         name: 'Corex Syrup 100ml',
         dosage: '10ml / dose',
         quantity: 2,
@@ -267,10 +267,10 @@ const INITIAL_SALES = (medicines: Medicine[]): Sale[] => [
   },
   {
     id: 'TXN-1003',
-    patientId: null, // Anonymous
+    CustomerId: null, // Anonymous
     items: [
       {
-        medicineId: 'MED-108',
+        Menu ItemId: 'MED-108',
         name: 'CoughSils Lozenges',
         dosage: '2.4mg',
         quantity: 16,
@@ -295,13 +295,13 @@ const INITIAL_PURCHASE_ORDERS: PurchaseOrder[] = [
     supplierId: 'SUP-001',
     items: [
       {
-        medicineId: 'MED-101',
+        Menu ItemId: 'MED-101',
         name: 'Paracetamol 500mg',
         quantity: 500,
         costPrice: 8.5
       },
       {
-        medicineId: 'MED-102',
+        Menu ItemId: 'MED-102',
         name: 'Pantocid 40mg',
         quantity: 200,
         costPrice: 12.0
@@ -316,13 +316,13 @@ const INITIAL_PURCHASE_ORDERS: PurchaseOrder[] = [
     supplierId: 'SUP-002',
     items: [
       {
-        medicineId: 'MED-103',
+        Menu ItemId: 'MED-103',
         name: 'Amoxycillin 250mg',
         quantity: 100,
         costPrice: 28.0
       },
       {
-        medicineId: 'MED-105',
+        Menu ItemId: 'MED-105',
         name: 'Azithral 500mg',
         quantity: 50,
         costPrice: 75.0
@@ -362,22 +362,22 @@ export class LocalDB {
     return JSON.parse(data);
   }
 
-  static getMedicines(): Medicine[] {
-    const data = safeStorage.getItem('argya_medicines');
+  static getMenu Items(): Menu Item[] {
+    const data = safeStorage.getItem('argya_Menu Items');
     if (!data) {
       const suppliers = this.getSuppliers();
-      const meds = INITIAL_MEDICINES(suppliers);
-      safeStorage.setItem('argya_medicines', JSON.stringify(meds));
+      const meds = INITIAL_Menu Items(suppliers);
+      safeStorage.setItem('argya_Menu Items', JSON.stringify(meds));
       return meds;
     }
     return JSON.parse(data);
   }
 
-  static getPatients(): Patient[] {
-    const data = safeStorage.getItem('argya_patients');
+  static getCustomers(): Customer[] {
+    const data = safeStorage.getItem('argya_Customers');
     if (!data) {
-      safeStorage.setItem('argya_patients', JSON.stringify(INITIAL_PATIENTS));
-      return INITIAL_PATIENTS;
+      safeStorage.setItem('argya_Customers', JSON.stringify(INITIAL_Customers));
+      return INITIAL_Customers;
     }
     return JSON.parse(data);
   }
@@ -385,7 +385,7 @@ export class LocalDB {
   static getSales(): Sale[] {
     const data = safeStorage.getItem('argya_sales');
     if (!data) {
-      const meds = this.getMedicines();
+      const meds = this.getMenu Items();
       const sales = INITIAL_SALES(meds);
       safeStorage.setItem('argya_sales', JSON.stringify(sales));
       return sales;
@@ -415,11 +415,11 @@ export class LocalDB {
     const data = safeStorage.getItem('argya_stock_movements');
     if (!data) {
       // Seed a few initial stock movements from original meds
-      const meds = this.getMedicines();
+      const meds = this.getMenu Items();
       const movements: StockMovement[] = meds.map((med, index) => ({
         id: `MOV-${2000 + index}`,
-        medicineId: med.id,
-        medicineName: med.name,
+        Menu ItemId: med.id,
+        Menu ItemName: med.name,
         type: 'Initial',
         quantityChange: med.stock,
         reason: 'Initial setup on catalog creation',
@@ -437,12 +437,12 @@ export class LocalDB {
     safeStorage.setItem('argya_suppliers', JSON.stringify(suppliers));
   }
 
-  static saveMedicines(medicines: Medicine[]): void {
-    safeStorage.setItem('argya_medicines', JSON.stringify(medicines));
+  static saveMenu Items(Menu Items: Menu Item[]): void {
+    safeStorage.setItem('argya_Menu Items', JSON.stringify(Menu Items));
   }
 
-  static savePatients(patients: Patient[]): void {
-    safeStorage.setItem('argya_patients', JSON.stringify(patients));
+  static saveCustomers(Customers: Customer[]): void {
+    safeStorage.setItem('argya_Customers', JSON.stringify(Customers));
   }
 
   static saveSales(sales: Sale[]): void {
@@ -462,36 +462,36 @@ export class LocalDB {
   }
 
   // Operations
-  static addPatient(patient: Omit<Patient, 'id' | 'createdAt'>): Patient {
-    const patients = this.getPatients();
-    // Generate human readable Patient ID PT-YYYY-XXXX
+  static addCustomer(Customer: Omit<Customer, 'id' | 'createdAt'>): Customer {
+    const Customers = this.getCustomers();
+    // Generate human readable Customer ID PT-YYYY-XXXX
     const year = new Date().getFullYear();
-    const count = patients.length + 1;
+    const count = Customers.length + 1;
     const formatCount = String(count).padStart(4, '0');
     const newId = `PT-${year}-${formatCount}`;
 
-    const newPatient: Patient = {
-      ...patient,
+    const newCustomer: Customer = {
+      ...Customer,
       id: newId,
       createdAt: new Date().toISOString()
     };
 
-    patients.unshift(newPatient); // Add to beginning for fast searching/recency
-    this.savePatients(patients);
-    return newPatient;
+    Customers.unshift(newCustomer); // Add to beginning for fast searching/recency
+    this.saveCustomers(Customers);
+    return newCustomer;
   }
 
-  static addMedicine(med: Omit<Medicine, 'id'>): Medicine {
-    const medicines = this.getMedicines();
-    const count = medicines.length + 1;
+  static addMenu Item(med: Omit<Menu Item, 'id'>): Menu Item {
+    const Menu Items = this.getMenu Items();
+    const count = Menu Items.length + 1;
     const newId = `MED-${100 + count}`;
     
-    const newMed: Medicine = {
+    const newMed: Menu Item = {
       ...med,
       id: newId
     };
-    medicines.push(newMed);
-    this.saveMedicines(medicines);
+    Menu Items.push(newMed);
+    this.saveMenu Items(Menu Items);
 
     // Create Stock movement log
     this.addStockMovement(newId, newMed.name, 'Initial', newMed.stock, 'Initial product import', 'Owner');
@@ -500,8 +500,8 @@ export class LocalDB {
   }
 
   static addStockMovement(
-    medicineId: string,
-    medicineName: string,
+    Menu ItemId: string,
+    Menu ItemName: string,
     type: StockMovement['type'],
     quantityChange: number,
     reason: string,
@@ -511,8 +511,8 @@ export class LocalDB {
     const id = `MOV-${Date.now()}`;
     const newMov: StockMovement = {
       id,
-      medicineId,
-      medicineName,
+      Menu ItemId,
+      Menu ItemName,
       type,
       quantityChange,
       reason,
@@ -523,21 +523,21 @@ export class LocalDB {
     this.saveStockMovements(movements);
   }
 
-  static updateMedicineStock(
-    medicineId: string,
+  static updateMenu Itemstock(
+    Menu ItemId: string,
     quantityChange: number,
     reason: string,
     type: StockMovement['type'],
     userRole: StockMovement['userRole']
   ): { success: boolean; error?: string } {
-    const medicines = this.getMedicines();
-    const medIndex = medicines.findIndex(m => m.id === medicineId);
+    const Menu Items = this.getMenu Items();
+    const medIndex = Menu Items.findIndex(m => m.id === Menu ItemId);
     
     if (medIndex === -1) {
-      return { success: false, error: 'Medicine not found' };
+      return { success: false, error: 'Menu Item not found' };
     }
 
-    const med = medicines[medIndex];
+    const med = Menu Items[medIndex];
     const nextStock = med.stock + quantityChange;
 
     if (nextStock < 0) {
@@ -545,20 +545,20 @@ export class LocalDB {
     }
 
     med.stock = nextStock;
-    this.saveMedicines(medicines);
+    this.saveMenu Items(Menu Items);
 
     // Log stock movement
-    this.addStockMovement(medicineId, med.name, type, quantityChange, reason, userRole);
+    this.addStockMovement(Menu ItemId, med.name, type, quantityChange, reason, userRole);
 
     return { success: true };
   }
 
   static finalizeSale(sale: Omit<Sale, 'id' | 'createdAt'>, userRole: StockMovement['userRole']): { success: boolean; sale?: Sale; error?: string } {
-    const medicines = this.getMedicines();
+    const Menu Items = this.getMenu Items();
     
     // 1. Pre-validate stock for all items
     for (const item of sale.items) {
-      const med = medicines.find(m => m.id === item.medicineId);
+      const med = Menu Items.find(m => m.id === item.Menu ItemId);
       if (!med) {
         return { success: false, error: `Product "${item.name}" not found in system` };
       }
@@ -572,8 +572,8 @@ export class LocalDB {
 
     // 2. Commit stock decrements atomically
     for (const item of sale.items) {
-      const medIndex = medicines.findIndex(m => m.id === item.medicineId);
-      const med = medicines[medIndex];
+      const medIndex = Menu Items.findIndex(m => m.id === item.Menu ItemId);
+      const med = Menu Items[medIndex];
       med.stock -= item.quantity;
       
       // Log stock movement
@@ -581,7 +581,7 @@ export class LocalDB {
     }
     
     // Save updated stock
-    this.saveMedicines(medicines);
+    this.saveMenu Items(Menu Items);
 
     // 3. Save Sale record
     const sales = this.getSales();
@@ -613,14 +613,14 @@ export class LocalDB {
     }
 
     // Restore stock atomically
-    const medicines = this.getMedicines();
+    const Menu Items = this.getMenu Items();
     for (const item of sale.items) {
-      const medIndex = medicines.findIndex(m => m.id === item.medicineId);
+      const medIndex = Menu Items.findIndex(m => m.id === item.Menu ItemId);
       if (medIndex !== -1) {
-        medicines[medIndex].stock += item.quantity;
+        Menu Items[medIndex].stock += item.quantity;
         // Log movement
         this.addStockMovement(
-          item.medicineId,
+          item.Menu ItemId,
           item.name,
           'Refund',
           item.quantity,
@@ -630,8 +630,8 @@ export class LocalDB {
       }
     }
 
-    // Save medicines
-    this.saveMedicines(medicines);
+    // Save Menu Items
+    this.saveMenu Items(Menu Items);
 
     // Mark as refunded
     sale.paymentStatus = 'Refunded';
@@ -673,14 +673,14 @@ export class LocalDB {
 
     // If receiving, increment stocks
     if (status === 'Received') {
-      const medicines = this.getMedicines();
+      const Menu Items = this.getMenu Items();
       for (const item of po.items) {
-        const medIndex = medicines.findIndex(m => m.id === item.medicineId);
+        const medIndex = Menu Items.findIndex(m => m.id === item.Menu ItemId);
         if (medIndex !== -1) {
-          medicines[medIndex].stock += item.quantity;
+          Menu Items[medIndex].stock += item.quantity;
           // Log stock movement
           this.addStockMovement(
-            item.medicineId,
+            item.Menu ItemId,
             item.name,
             'Purchase',
             item.quantity,
@@ -689,7 +689,7 @@ export class LocalDB {
           );
         }
       }
-      this.saveMedicines(medicines);
+      this.saveMenu Items(Menu Items);
       po.receivedAt = new Date().toISOString();
     }
 

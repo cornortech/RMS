@@ -15,15 +15,27 @@ const tableSchema = mongoose.Schema({
         min: 1,
         default: 2,
     },
+    occupiedSeats: {
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0,
+    },
     status: {
         type: String,
-        enum: ["Available", "Occupied", "Reserved"],
+        enum: ["Available", "Occupied", "Reserved", "Out of Service"],
         default: "Available",
     },
-  
 },
 {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+});
+
+// Virtual field to automatically calculate free space (available seats)
+tableSchema.virtual('freeSeats').get(function() {
+    return Math.max(0, this.capacity - this.occupiedSeats);
 });
 
 const Table = mongoose.model("RestaurantTable", tableSchema);

@@ -74,7 +74,6 @@ Rest.../
     │   │   ├── MenuManager....tsx
     │   │   ├── Orders.tsx
     │   │   ├── Setting.tsx
-    │   │   ├── StaffLoginpage.tsx
     │   │   ├── StaffManager.tsx
     │   │   ├── StockManagem....tsx
     │   │   ├── Table.tsx
@@ -128,7 +127,7 @@ Start the backend server:
 node index.js
 ```
 
-The backend should now be running on `http://localhost:5000` (or the port you set).
+The backend should now be running on `http://localhost:5000 /api   ` (or the port you set).
 
 ### 3. Frontend Setup
 
@@ -142,7 +141,7 @@ npm install
 Create a `.env` file in the `frontend/` folder (use `.env.example` as a reference):
 
 ```env
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:5000 /api   
 ```
 
 Start the frontend dev server:

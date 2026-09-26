@@ -25,13 +25,15 @@ const createOrderSchema = mongoose.Schema({
         type: String,
         required: true,
     },
+    staffId: {
+        type: String,
+        required: false, 
+    },
     customerName: {
         type: String,
-        required: true,
     },
     tableNumber: {
         type: String,
-        required: true,
     },
     orderNote: {
         type: String,

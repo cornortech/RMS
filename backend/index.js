@@ -1,86 +1,271 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const mongoose = require("mongoose");
+
 const conectDb = require("./connectDb");
 const Menu = require("./models/menu");
 const Order = require("./models/createOrder");
 const Table = require("./models/table");
 const Bill = require("./models/bill");
-const PharmacyUser = require("./models/login");
-const PharmacyStaff = require("./models/loginStaff");
 const Stock = require("./models/stock");
-const session = require('express-session');
-const MongoStore = require('connect-mongo').default || require('connect-mongo');
-const mongoose = require('mongoose');
+const RestaurantUser = require("./models/login");
+const RestaurantStaff = require("./models/loginStaff");
+const { hashPassword, verifyPassword, needsRehash, validateNewPassword } = require("./utils/password");
+const { signToken, requireAuth, requireAdmin, requireManager } = require("./utils/auth");
+const loyaltyRoutes = require("./routes/loyalty");
 
-// ... all your require statements ...
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.set('trust proxy', 1);
+// Neutralises NoSQL-injection such as {"id": {"$ne": null}} in query filters.
+mongoose.set("sanitizeFilter", true);
 
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(helmet());
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://rms-pa7b9fs27-ramitnpns-projects.vercel.app"
-];
-// CORS and JSON parsing set up immediately, not gated on DB connection
+// Only these websites may call the API from a browser (set ALLOWED_ORIGINS in .env).
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000,http://localhost:5173")
+    .split(",").map((o) => o.trim()).filter(Boolean);
+
 app.use(cors({
-    origin: true,
-    credentials: true,
+    origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error("CORS: origin not allowed"));
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     optionsSuccessStatus: 200
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 
-conectDb();
 
-mongoose.connection.once('open', () => {
-    console.log("MongoDB connection established for sessions.");
-
-    app.use(session({
-        secret: process.env.SESSION_SECRET || 'your_secret',
-        resave: false,
-        saveUninitialized: false,
-        store: MongoStore.create({
-            client: mongoose.connection.getClient()
-        }),
-        cookie: {
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            httpOnly: true,
-            maxAge: 24 * 60 * 60 * 1000
-        }
-    }));
-
-    // Register your routes AFTER session middleware is attached
-    // app.use('/api/auth', authRoutes);
-    // app.use('/api/patients', patientRoutes);
-    // ...etc
-
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-});
-
-mongoose.connection.on('error', (err) => {
-    console.error("MongoDB connection error:", err);
-});
-
-// Global Helper functions
+// ---------- Helpers ----------
 const getValue = (val, fallback) => (val !== undefined && val !== null && String(val).trim() !== "") ? val : fallback;
 
-// Safe Number parsing helper to prevent NaN database crashes
 const parseNum = (val, fallback = 0) => {
     const parsed = Number(val);
     return isNaN(parsed) ? fallback : parsed;
 };
 
-// Helper to reliably normalize both Array and String inputs into a Database string string formatting
-const parseArrayOrString = (arrayVal, stringVal, fallback = "None") => {
-    if (Array.isArray(arrayVal)) return arrayVal.length > 0 ? arrayVal.join(', ') : fallback;
-    return getValue(stringVal, fallback);
+// Only accept real strings from the browser (blocks object/array tricks).
+const str = (v) => (typeof v === "string" ? v.trim() : "");
+
+
+
+// ==========================================
+// ⏱️ RESTAURANT SUBSCRIPTION TIME (self-service, read-only)
+// ==========================================
+
+// Deducts one day for every full calendar day since the last sync, saves it,
+// and returns the restaurant with an up-to-date remainingTime. No cron job
+// needed — this runs lazily, the moment anyone asks for the time left.
+const syncRemainingTime = async (restaurant) => {
+    const now = new Date();
+    const last = restaurant.lastTimeSync || restaurant.createdAt || now;
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysPassed = Math.floor((now.getTime() - new Date(last).getTime()) / msPerDay);
+
+    if (daysPassed > 0) {
+        const currentRemaining = restaurant.remainingTime ?? restaurant.totalTime ?? 0;
+        restaurant.remainingTime = Math.max(0, currentRemaining - daysPassed);
+        restaurant.lastTimeSync = new Date(new Date(last).getTime() + daysPassed * msPerDay);
+        await restaurant.save();
+    }
+    return restaurant;
 };
+
+// ==========================================
+// PUBLIC ROUTES (no token needed)
+// ==========================================
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// 10 FAILED attempts per IP per 15 min. Successful logins are not counted.
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: "Too many login attempts. Please wait 15 minutes and try again." }
+});
+
+const publicUser = (r) => ({
+    _id: r._id,
+    id: r.id,
+    restaurantName: r.restaurantName,
+    phone: r.phone,
+    email: r.email,
+    location: r.location,
+    PanOrVat: r.PanOrVat,
+    isActive: r.isActive,
+    isAdmin: r.isAdmin,
+    totalTime: r.totalTime,
+  remainingTime: r.remainingTime,
+});
+
+app.post("/api/auth/login", loginLimiter, async (req, res) => {
+    try {
+        const restaurantName = str(req.body?.restaurantName);
+        const id = str(req.body?.id);
+        const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+        if (!restaurantName || !id || !password) {
+            return res.status(400).json({ success: false, message: "Restaurant name, ID and password are required." });
+        }
+
+        // One vague message for every failure, so attackers can't learn which part was wrong.
+        const fail = () => res.status(401).json({ success: false, message: "Invalid restaurant name, ID or password." });
+
+        const restaurant = await RestaurantUser.findOne({ id }).select("+password");
+        if (!restaurant) return fail();
+       if (String(restaurant.restaurantName || "").trim().toLowerCase() !== restaurantName.toLowerCase()) return fail();
+        if (!(await verifyPassword(password, restaurant.password))) return fail();
+
+        if (!restaurant.isActive) {
+            return res.status(403).json({ success: false, message: "Account is deactivated. Contact Admin." });
+        }
+
+        // Upgrade an old plain-text password to a secure hash on the first successful login.
+        if (needsRehash(restaurant.password)) {
+            restaurant.password = await hashPassword(password);
+            await restaurant.save();
+        }
+
+        const token = signToken({ kind: "restaurant", uid: String(restaurant._id) });
+        return res.status(200).json({
+            success: true,
+            message: "Login successful!",
+            token,
+            user: publicUser(restaurant)
+        });
+    } catch (error) {
+        console.error("🔴 LOGIN ERROR:", error);
+        return res.status(500).json({ success: false, message: "Server error during login." });
+    }
+});
+
+// ==========================================
+// 🔒 EVERYTHING BELOW THIS LINE NEEDS A VALID TOKEN
+// ==========================================
+app.use("/api/public", require("./routes/publicMenu"));
+app.use("/api", requireAuth);
+
+app.post("/api/auth/verify", requireAuth, async (req, res) => {
+    try {
+        const restaurant = await RestaurantUser.findById(req.auth.uid);
+        if (!restaurant) {
+            return res.status(401).json({ success: false, message: "Invalid token" });
+        }
+        return res.json({ success: true, user: publicUser(restaurant) });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "Server error." });
+    }
+});
+
+app.post("/api/staff/login", loginLimiter, async (req, res) => {
+    try {
+        const id = str(req.body?.id);
+        const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+        if (!id || !password) {
+            return res.status(400).json({ success: false, message: "Staff ID and password are required." });
+        }
+
+        // This computer is already logged in as a restaurant.
+        // Only THAT restaurant's staff can sign in here.
+        const restaurantName = req.auth.restaurantName;
+
+        const staff = await RestaurantStaff.findOne({ id, restaurantName })
+            .collation({ locale: "en", strength: 2 })
+            .select("+password");
+
+        if (!staff || !(await verifyPassword(password, staff.password))) {
+            return res.status(401).json({ success: false, message: "Invalid staff ID or password." });
+        }
+        if (staff.isActive === false) {
+            return res.status(403).json({ success: false, message: "Your account is deactivated. Only active staff can log in." });
+        }
+
+        if (needsRehash(staff.password)) {
+            staff.password = await hashPassword(password);
+            await staff.save();
+        }
+
+        // uid = the restaurant from the current session, never looked up by name
+        const token = signToken({ kind: "staff", uid: req.auth.uid, sid: String(staff._id) });
+
+        return res.json({
+            success: true,
+            token,
+            user: { id: staff.id, staffName: staff.staffName, role: staff.role, restaurantName: req.auth.restaurantName },
+        });
+    } catch (error) {
+        console.error("🔴 STAFF LOGIN ERROR:", error);
+        return res.status(500).json({ success: false, message: "Server error during staff login." });
+    }
+});
+
+// Every write is forced to belong to the logged-in restaurant,
+// even if someone edits the request in the browser.
+app.use(["/api/menu", "/api/orders", "/api/tables", "/api/bills", "/api/stocks"], (req, res, next) => {
+    if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && typeof req.body === "object") {
+        req.body.restaurantId = req.auth.restaurantId;
+    }
+    next();
+});
+
+// For /something/:id routes, make sure that record belongs to this restaurant.
+const ownsDoc = (Model) => async (req, res, next) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid id." });
+        }
+        const doc = await Model.findById(req.params.id).select("restaurantId").lean();
+        if (!doc || doc.restaurantId !== req.auth.restaurantId) {
+            return res.status(404).json({ success: false, message: "Not found." });
+        }
+        next();
+    } catch (err) {
+        next(err);
+    }
+};
+app.use("/api/menu/:id", ownsDoc(Menu));
+app.use("/api/orders/:id", ownsDoc(Order));
+app.use("/api/tables/:id", ownsDoc(Table));
+app.use("/api/bills/:id", ownsDoc(Bill));
+app.use("/api/stocks/:id", ownsDoc(Stock));
+
+
+// Server-side role checks (the sidebar hides pages, this enforces it)
+const allowRoles = (...roles) => (req, res, next) =>
+    req.auth?.isAdmin || (req.auth?.kind === "staff" && roles.includes(req.auth.role))
+        ? next()
+        : res.status(403).json({ success: false, message: "Your role is not allowed to do this." });
+
+const guard = (path, rules) =>
+    app.use(path, (req, res, next) => (rules[req.method] ? allowRoles(...rules[req.method])(req, res, next) : next()));
+
+const M = "Manager", W = "Waiter", K = "Kitchen Staff", C = "Cashier";
+
+guard("/api/menu",   { POST: [M], PUT: [M], DELETE: [M] });
+guard("/api/orders", { POST: [M, W], PUT: [M, W, K, C], DELETE: [M] });
+guard("/api/bills",  { POST: [M, C], PATCH: [M, C] });
+guard("/api/tables", { POST: [M, C], PUT: [M, W, C], DELETE: [M] });
+guard("/api/stocks", { POST: [M, K, C], PUT: [M, K, C], DELETE: [M] });
+
+
+
+app.use("/api/loyalty", requireAuth, loyaltyRoutes);
+app.use("/api/qr", require("./routes/qr"));
+
+app.use("/api/table-qr", require("./routes/tableQr"));
+app.use("/api/notifications", require("./routes/notifications"));
 
 
 
@@ -88,58 +273,102 @@ const parseArrayOrString = (arrayVal, stringVal, fallback = "None") => {
 // ==========================================
 // Menu
 // ==========================================
+const sanitizeComboItems = (items) =>
+    Array.isArray(items)
+        ? items
+              .filter((c) => c && c.menuItemId)
+              .map((c) => ({
+                  menuItemId: String(c.menuItemId),
+                  itemName: String(c.itemName || "").trim(),
+                  quantity: Math.max(1, parseInt(c.quantity, 10) || 1),
+                  price: parseNum(c.price || 0),
+              }))
+        : [];
 
+// A combo must contain at least 2 items in total (e.g. 1 Momo + 1 Coke, or 2 Momo)
+const comboItemCount = (items) => items.reduce((sum, c) => sum + (c.quantity || 0), 0);
+
+// ==========================================
+// POST: Create a New Menu Item (regular item or combo)
+// ==========================================
 app.post("/api/menu", async (req, res) => {
     try {
         const formData = req.body;
-        console.log("=== INCOMING MENU ITEM DATA ===");
-        console.log(formData);
+
+        const category = getValue(formData.category, "Uncategorized");
+        const isCombo =
+            formData.isCombo !== undefined ? Boolean(formData.isCombo) : category === COMBO_CATEGORY;
+        const comboItems = isCombo ? sanitizeComboItems(formData.comboItems) : [];
+
+        if (isCombo && comboItemCount(comboItems) < 2) {
+            return res.status(400).json({
+                success: false,
+                message: "A combo needs at least 2 items.",
+            });
+        }
 
         const newMenuItem = await Menu.create({
             itemName: getValue(formData.itemName, "Unknown Dish"),
             description: getValue(formData.description, "No description provided"),
-            category: getValue(formData.category, "Uncategorized"),
+            category,
             price: parseNum(getValue(formData.price, 0)),
             status: getValue(formData.status, "Available"),
             skuBarcodeReference: getValue(formData.skuBarcodeReference, ""),
-            restaurantId: getValue(formData.restaurantId, "")
+            restaurantId: getValue(formData.restaurantId, ""),
+            isCombo,
+            comboItems,
         });
 
-        return res.status(201).json({ 
-            success: true, 
-            message: "Menu item added successfully!", 
-            data: newMenuItem 
+        return res.status(201).json({
+            success: true,
+            message: isCombo ? "Combo created successfully!" : "Menu item added successfully!",
+            data: newMenuItem,
         });
-
     } catch (error) {
         console.error("🔴 DATABASE WRITE CRASH:", error);
-        
-        // Handle MongoDB Duplicate Key Error cleanly (e.g., repeating a unique SKU/barcode string)
+
         if (error.code === 11000) {
             const duplicateField = Object.keys(error.keyValue)[0];
             return res.status(400).json({
                 success: false,
-                message: `A menu item with this ${duplicateField} ("${error.keyValue[duplicateField]}") already exists! Please use a unique value.`
+                message: `A menu item with this ${duplicateField} ("${error.keyValue[duplicateField]}") already exists! Please use a unique value.`,
             });
         }
 
-        return res.status(500).json({ 
-            success: false, 
+        return res.status(500).json({
+            success: false,
             message: "Failed to save menu item to database.",
-            error: error.message 
+            error: process.env.NODE_ENV === "production" ? undefined : error.message,
         });
     }
 });
 
-// GET: Fetch All Menu Items (scoped to restaurantId if provided)
+// ==========================================
+// GET: Fetch All Menu Items (compatible with all existing pages)
+// ==========================================
 app.get("/api/menu", async (req, res) => {
     try {
-        const { restaurantId } = req.query;
-        const filter = restaurantId ? { restaurantId } : {};
+        // Works with or without auth middleware
+        const restaurantId =
+            (req.auth && req.auth.restaurantId) || req.query.restaurantId || "";
+        const filter = restaurantId ? { restaurantId: String(restaurantId) } : {};
 
-        const dbItems = await Menu.find(filter).sort({ createdAt: -1 });
+        // .lean() returns plain objects, so old/odd combo data can't crash Mongoose
+        const dbItems = await Menu.find(filter).sort({ createdAt: -1 }).lean();
 
-        const items = dbItems.map(item => {
+        const items = dbItems.map((item) => {
+            // Keep only valid combo lines; ignore anything saved in an old format
+            const comboItems = Array.isArray(item.comboItems)
+                ? item.comboItems
+                      .filter((c) => c && typeof c === "object" && c.menuItemId)
+                      .map((c) => ({
+                          menuItemId: String(c.menuItemId),
+                          itemName: String(c.itemName || ""),
+                          quantity: Number(c.quantity) || 1,
+                          price: Number(c.price) || 0,
+                      }))
+                : [];
+
             return {
                 id: item._id,
                 _id: item._id,
@@ -148,43 +377,76 @@ app.get("/api/menu", async (req, res) => {
                 category: item.category,
                 price: item.price,
                 status: item.status,
-                skuBarcodeReference: item.skuBarcodeReference,
+                skuBarcodeReference: item.skuBarcodeReference || "",
                 restaurantId: item.restaurantId,
-                createdAt: item.createdAt || new Date().toISOString()
+                isCombo: Boolean(item.isCombo) || item.category === "Combo",
+                comboItems,
+                createdAt: item.createdAt || new Date().toISOString(),
             };
         });
 
-        return res.status(200).json({
-            success: true,
-            count: items.length,
-            data: items 
-        });
+        return res.status(200).json({ success: true, count: items.length, data: items });
     } catch (error) {
         console.error("🔴 Backend fetch failed:", error);
-        return res.status(500).json({ success: false, message: "Error fetching menu data." });
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching menu data.",
+            error: error.message, // shows the real reason in the browser Network tab
+        });
     }
 });
 
+// ==========================================
 // PUT: Update an Existing Menu Item by ID
+// Only the fields that are sent get changed, so a page that doesn't know
+// about combos can never wipe a combo's contents.
+// ==========================================
 app.put("/api/menu/:id", async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
-        console.log(`=== UPDATING MENU ITEM ID: ${id} ===`);
+        const updatedFields = {};
 
-        const updatedFields = {
-            itemName: getValue(updateData.itemName, "Unknown Dish"),
-            description: getValue(updateData.description, "No description provided"),
-            category: getValue(updateData.category, "Uncategorized"),
-            price: parseNum(getValue(updateData.price, 0)),
-            status: getValue(updateData.status, "Available"),
-            skuBarcodeReference: getValue(updateData.skuBarcodeReference, ""),
-            restaurantId: getValue(updateData.restaurantId, "")
-        };
+        if (updateData.itemName !== undefined) updatedFields.itemName = getValue(updateData.itemName, "Unknown Dish");
+        if (updateData.description !== undefined) updatedFields.description = getValue(updateData.description, "No description provided");
+        if (updateData.category !== undefined) updatedFields.category = getValue(updateData.category, "Uncategorized");
+        if (updateData.price !== undefined) updatedFields.price = parseNum(getValue(updateData.price, 0));
+        if (updateData.status !== undefined) updatedFields.status = getValue(updateData.status, "Available");
+        if (updateData.skuBarcodeReference !== undefined) updatedFields.skuBarcodeReference = getValue(updateData.skuBarcodeReference, "");
+        if (updateData.restaurantId) updatedFields.restaurantId = String(updateData.restaurantId);
+
+        // Combo flag: explicit value wins; otherwise follow the category if it was sent
+        if (updateData.isCombo !== undefined) {
+            updatedFields.isCombo = Boolean(updateData.isCombo);
+        } else if (updateData.category !== undefined) {
+            updatedFields.isCombo = updateData.category === COMBO_CATEGORY;
+        }
+
+        // Combo contents: only touched when the request actually sends them
+        if (Array.isArray(updateData.comboItems)) {
+            updatedFields.comboItems = sanitizeComboItems(updateData.comboItems);
+        }
+
+        // Turning an item into a regular item clears its combo contents
+        if (updatedFields.isCombo === false) {
+            updatedFields.comboItems = [];
+        }
+
+        // A combo being saved with new contents still needs at least 2 items
+        if (updatedFields.isCombo === true && updatedFields.comboItems && comboItemCount(updatedFields.comboItems) < 2) {
+            return res.status(400).json({
+                success: false,
+                message: "A combo needs at least 2 items.",
+            });
+        }
+
+        if (Object.keys(updatedFields).length === 0) {
+            return res.status(400).json({ success: false, message: "Nothing to update." });
+        }
 
         const updatedItem = await Menu.findByIdAndUpdate(
-            id, 
-            { $set: updatedFields }, 
+            id,
+            { $set: updatedFields },
             { new: true, runValidators: true }
         );
 
@@ -195,32 +457,33 @@ app.put("/api/menu/:id", async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Menu item updated successfully!",
-            data: updatedItem
+            data: updatedItem,
         });
     } catch (error) {
         console.error("🔴 Backend update failed:", error);
-        
+
         if (error.code === 11000) {
             const duplicateField = Object.keys(error.keyValue)[0];
             return res.status(400).json({
                 success: false,
-                message: `Update rejected! Another item already uses this ${duplicateField}.`
+                message: `Update rejected! Another item already uses this ${duplicateField}.`,
             });
         }
 
-        return res.status(500).json({ 
-            success: false, 
+        return res.status(500).json({
+            success: false,
             message: "Error updating menu entry.",
-            error: error.message 
+            error: process.env.NODE_ENV === "production" ? undefined : error.message,
         });
     }
 });
 
+// ==========================================
 // DELETE: Remove a Menu Item by ID
+// ==========================================
 app.delete("/api/menu/:id", async (req, res) => {
     try {
         const { id } = req.params;
-        console.log(`=== DELETING MENU ITEM ID: ${id} ===`);
 
         const deletedItem = await Menu.findByIdAndDelete(id);
 
@@ -228,10 +491,17 @@ app.delete("/api/menu/:id", async (req, res) => {
             return res.status(404).json({ success: false, message: "Menu item not found." });
         }
 
+        // Tell the caller which combos still reference this item (the UI shows them as "removed")
+        const affectedCombos = await Menu.find(
+            { isCombo: true, "comboItems.menuItemId": String(id) },
+            { itemName: 1 }
+        ).lean();
+
         return res.status(200).json({
             success: true,
             message: "Menu item deleted successfully!",
-            deletedItemId: id
+            deletedItemId: id,
+            affectedCombos: affectedCombos.map((c) => ({ _id: c._id, itemName: c.itemName })),
         });
     } catch (error) {
         console.error("🔴 Backend deletion failed:", error);
@@ -239,29 +509,43 @@ app.delete("/api/menu/:id", async (req, res) => {
     }
 });
 
-
 // ==========================================
 // Order
 // ==========================================
 
-
-app.post("/api/orders", async (req, res) => {
+app.post("/api/orders", requireAuth, async (req, res) => {
     try {
         const formData = req.body;
-        console.log("=== INCOMING ORDER DATA ===");
-        console.log(formData);
+        const restaurantId = req.auth.restaurantId; // Securely enforced from session
+
+        // Save the staff "id" (e.g. "111"), NOT the _id.
+        // 1) Use the id from the login token if auth.js provides it.
+        // 2) Otherwise use the id the browser sent from localStorage,
+        //    but only if that staff member exists in THIS restaurant.
+        let staffId = req.auth.staffLoginId || null;
+        if (!staffId) {
+            const sentId = String(formData.staffId || "").trim();
+            if (sentId) {
+                const exists = await RestaurantStaff.exists({
+                    restaurantName: req.auth.restaurantName,
+                    id: sentId
+                });
+                if (exists) staffId = sentId;
+            }
+        }
 
         const newOrder = await Order.create({
-            restaurantId: getValue(formData.restaurantId, ""),
+            restaurantId: restaurantId,
+            staffId: staffId,   // the staff "id" like "111"
             customerName: getValue(formData.customerName, "Guest"),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             orderNote: getValue(formData.orderNote, ""),
             items: (formData.items || []).map(i => ({
-    itemName: i.itemName || "Unknown Item",
-    description: i.description || "",
-    itemPrice: Number(i.itemPrice) || 0,
-    quantity: Number(i.quantity) || 1,
-})),
+                itemName: i.itemName || "Unknown Item",
+                description: i.description || "",
+                itemPrice: Number(i.itemPrice) || 0,
+                quantity: Number(i.quantity) || 1,
+            })),
             totalAmount: parseNum(getValue(formData.totalAmount, 0)),
             orderStatus: getValue(formData.orderStatus, "Pending"),
             paymentStatus: getValue(formData.paymentStatus, "Unpaid")
@@ -278,15 +562,15 @@ app.post("/api/orders", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to save order to database.",
-            error: error.message
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
 
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", requireAuth, async (req, res) => {
     try {
-        const { restaurantId } = req.query;
-        const filter = restaurantId ? { restaurantId } : {};
+        const restaurantId = req.auth.restaurantId;
+        const filter = req.auth.isAdmin ? {} : { restaurantId };
 
         const dbItems = await Order.find(filter).sort({ createdAt: -1 });
 
@@ -294,6 +578,7 @@ app.get("/api/orders", async (req, res) => {
             id: item._id,
             _id: item._id,
             restaurantId: item.restaurantId,
+            staffId: item.staffId || null, // <--- Mapping staffId to the response
             customerName: item.customerName,
             tableNumber: item.tableNumber,
             orderNote: item.orderNote,
@@ -314,22 +599,36 @@ app.get("/api/orders", async (req, res) => {
         return res.status(500).json({ success: false, message: "Error fetching orders data." });
     }
 });
+app.get("/api/staff/names", requireAuth, async (req, res) => {
+    try {
+        const staff = await RestaurantStaff
+            .find({ restaurantName: req.auth.restaurantName })
+            .select("id staffName role");
 
-app.put("/api/orders/:id", async (req, res) => {
+        res.status(200).json({
+            success: true,
+            data: staff.map((s) => ({ _id: s._id, id: s.id, staffName: s.staffName, role: s.role }))
+        });
+    } catch (err) {
+        console.error("🔴 STAFF NAMES ERROR:", err);
+        res.status(500).json({ success: false, message: "Error fetching staff names" });
+    }
+});
+
+app.put("/api/orders/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
 
-        // Dynamically build the update object based on what was sent
         const updatedFields = {};
-        if (updateData.restaurantId !== undefined) updatedFields.restaurantId = updateData.restaurantId;
         if (updateData.customerName !== undefined) updatedFields.customerName = updateData.customerName;
         if (updateData.tableNumber !== undefined) updatedFields.tableNumber = updateData.tableNumber;
         if (updateData.orderNote !== undefined) updatedFields.orderNote = updateData.orderNote;
         if (updateData.totalAmount !== undefined) updatedFields.totalAmount = Number(updateData.totalAmount);
         if (updateData.orderStatus !== undefined) updatedFields.orderStatus = updateData.orderStatus;
         if (updateData.paymentStatus !== undefined) updatedFields.paymentStatus = updateData.paymentStatus;
-        
+        if (updateData.staffId !== undefined) updatedFields.staffId = updateData.staffId; // <--- Allow updating staffId if needed
+
         if (updateData.items) {
             updatedFields.items = updateData.items.map(i => ({
                 itemName: i.itemName || "Unknown Item",
@@ -339,14 +638,16 @@ app.put("/api/orders/:id", async (req, res) => {
             }));
         }
 
-        const updatedItem = await Order.findByIdAndUpdate(
-            id,
+        const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+
+        const updatedItem = await Order.findOneAndUpdate(
+            query,
             { $set: updatedFields },
             { new: true, runValidators: true }
         );
 
         if (!updatedItem) {
-            return res.status(404).json({ success: false, message: "Order not found." });
+            return res.status(404).json({ success: false, message: "Order not found or unauthorized." });
         }
 
         return res.status(200).json({
@@ -359,18 +660,20 @@ app.put("/api/orders/:id", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error updating order entry.",
-            error: error.message
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
 
-app.delete("/api/orders/:id", async (req, res) => {
+app.delete("/api/orders/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
-        const deletedItem = await Order.findByIdAndDelete(id);
+        const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+
+        const deletedItem = await Order.findOneAndDelete(query);
 
         if (!deletedItem) {
-            return res.status(404).json({ success: false, message: "Order not found." });
+            return res.status(404).json({ success: false, message: "Order not found or unauthorized." });
         }
 
         return res.status(200).json({
@@ -390,42 +693,42 @@ app.delete("/api/orders/:id", async (req, res) => {
 // Table
 // ==========================================
 
-
-
-app.post("/api/tables", async (req, res) => {
+app.post("/api/tables", requireAuth, async (req, res) => {
     try {
         const formData = req.body;
-        console.log("=== INCOMING TABLE DATA ===");
-        console.log(formData);
+        const restaurantId = req.auth.restaurantId;
+
+        const capacity = parseNum(getValue(formData.capacity, 2));
+        const occupiedSeats = parseNum(getValue(formData.occupiedSeats, 0));
 
         const newTable = await Table.create({
-            restaurantId: getValue(formData.restaurantId, ""),
+            restaurantId: restaurantId,
             tableName: getValue(formData.tableName, "Table 1"),
-            capacity: parseNum(getValue(formData.capacity, 2)),
+            capacity: capacity,
+            occupiedSeats: Math.min(occupiedSeats, capacity), // ensures occupied doesn't exceed capacity
             status: getValue(formData.status, "Available")
         });
 
-        return res.status(201).json({ 
-            success: true, 
-            message: "Table added successfully!", 
-            data: newTable 
+        return res.status(201).json({
+            success: true,
+            message: "Table added successfully!",
+            data: newTable
         });
 
     } catch (error) {
         console.error("🔴 DATABASE WRITE CRASH:", error);
-        return res.status(500).json({ 
-            success: false, 
+        return res.status(500).json({
+            success: false,
             message: "Failed to save table to database.",
-            error: error.message 
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
 
-// GET: Fetch All Tables (scoped to restaurantId if provided)
-app.get("/api/tables", async (req, res) => {
+app.get("/api/tables", requireAuth, async (req, res) => {
     try {
-        const { restaurantId } = req.query;
-        const filter = restaurantId ? { restaurantId } : {};
+        const restaurantId = req.auth.restaurantId;
+        const filter = req.auth.isAdmin ? {} : { restaurantId };
 
         const dbItems = await Table.find(filter).sort({ createdAt: -1 });
 
@@ -435,6 +738,8 @@ app.get("/api/tables", async (req, res) => {
             restaurantId: item.restaurantId,
             tableName: item.tableName,
             capacity: item.capacity,
+            occupiedSeats: item.occupiedSeats ?? 0,
+            freeSeats: item.freeSeats ?? Math.max(0, item.capacity - (item.occupiedSeats ?? 0)),
             status: item.status,
             createdAt: item.createdAt || new Date().toISOString()
         }));
@@ -442,7 +747,7 @@ app.get("/api/tables", async (req, res) => {
         return res.status(200).json({
             success: true,
             count: items.length,
-            data: items 
+            data: items
         });
     } catch (error) {
         console.error("🔴 Backend fetch failed:", error);
@@ -450,28 +755,31 @@ app.get("/api/tables", async (req, res) => {
     }
 });
 
-// PUT: Update an Existing Table by ID
-app.put("/api/tables/:id", async (req, res) => {
+app.put("/api/tables/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
-        console.log(`=== UPDATING TABLE ID: ${id} ===`);
+
+        const capacity = parseNum(getValue(updateData.capacity, 2));
+        const occupiedSeats = parseNum(getValue(updateData.occupiedSeats, 0));
 
         const updatedFields = {
-            restaurantId: getValue(updateData.restaurantId, ""),
             tableName: getValue(updateData.tableName, "Table 1"),
-            capacity: parseNum(getValue(updateData.capacity, 2)),
+            capacity: capacity,
+            occupiedSeats: Math.min(occupiedSeats, capacity),
             status: getValue(updateData.status, "Available")
         };
 
-        const updatedItem = await Table.findByIdAndUpdate(
-            id, 
-            { $set: updatedFields }, 
+        const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+
+        const updatedItem = await Table.findOneAndUpdate(
+            query,
+            { $set: updatedFields },
             { new: true, runValidators: true }
         );
 
         if (!updatedItem) {
-            return res.status(404).json({ success: false, message: "Table not found." });
+            return res.status(404).json({ success: false, message: "Table not found or unauthorized." });
         }
 
         return res.status(200).json({
@@ -481,24 +789,23 @@ app.put("/api/tables/:id", async (req, res) => {
         });
     } catch (error) {
         console.error("🔴 Backend update failed:", error);
-        return res.status(500).json({ 
-            success: false, 
+        return res.status(500).json({
+            success: false,
             message: "Error updating table entry.",
-            error: error.message 
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
 
-// DELETE: Remove a Table by ID
-app.delete("/api/tables/:id", async (req, res) => {
+app.delete("/api/tables/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
-        console.log(`=== DELETING TABLE ID: ${id} ===`);
+        const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
 
-        const deletedItem = await Table.findByIdAndDelete(id);
+        const deletedItem = await Table.findOneAndDelete(query);
 
         if (!deletedItem) {
-            return res.status(404).json({ success: false, message: "Table not found." });
+            return res.status(404).json({ success: false, message: "Table not found or unauthorized." });
         }
 
         return res.status(200).json({
@@ -512,20 +819,18 @@ app.delete("/api/tables/:id", async (req, res) => {
     }
 });
 
-
-
 // ==========================================
 // 🧾 BILLS ROUTES
 // ==========================================
 
-app.post("/api/bills", async (req, res) => {
+app.post("/api/bills", requireAuth, async (req, res) => {
     try {
         const formData = req.body;
-        console.log("=== INCOMING BILL DATA ===");
-        console.log(formData);
+        // Securely force the restaurantId from the logged-in user session
+        const restaurantId = req.auth.restaurantId;
 
         const newBill = await Bill.create({
-            restaurantName: getValue(formData.restaurantName, "Unknown Restaurant"),
+            restaurantName: getValue(formData.restaurantName, req.auth.restaurantName),
             location: getValue(formData.location, "N/A"),
             panOrVat: getValue(formData.panOrVat, "N/A"),
             invoiceNo: getValue(formData.invoiceNo, `INV-${Date.now()}`),
@@ -550,7 +855,7 @@ app.post("/api/bills", async (req, res) => {
             taxableAmount: parseNum(getValue(formData.taxableAmount, 0)),
             vatCollected: parseNum(getValue(formData.vatCollected, 0)),
             grandTotal: parseNum(getValue(formData.grandTotal, 0)),
-            restaurantId: getValue(formData.restaurantId, ""),
+            restaurantId: restaurantId,
             orderId: getValue(formData.orderId, ""),
         });
 
@@ -564,45 +869,44 @@ app.post("/api/bills", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to write billing record to database.",
-            error: error.message
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
 
-app.get("/api/bills", async (req, res) => {
+app.get("/api/bills", requireAuth, async (req, res) => {
     try {
-        const { restaurantId } = req.query;
-        const filter = restaurantId ? { restaurantId } : {};
+        const restaurantId = req.auth.restaurantId;
+        // Admins can see all if needed, but standard users are strictly scoped
+        const filter = req.auth.isAdmin ? {} : { restaurantId };
 
         const dbBills = await Bill.find(filter).sort({ createdAt: -1 });
 
-        const bills = dbBills.map(bill => {
-            return {
-                id: bill._id,
-                _id: bill._id,
-                orderId: bill.orderId, // ADD THIS
-                restaurantName: bill.restaurantName,
-                location: bill.location,
-                panOrVat: bill.panOrVat,
-                invoiceNo: bill.invoiceNo,
-                billTo: bill.billTo,
-                tableNumber: bill.tableNumber,
-                paymentMethod: bill.paymentMethod,
-                cashPaidMoney: bill.cashPaidMoney,
-                eSewaPaidMoney: bill.eSewaPaidMoney,
-                khaltiPaidMoney: bill.khaltiPaidMoney,
-                imePayPaidMoney: bill.imePayPaidMoney,
-                date: bill.date,
-                items: bill.items,
-                subtotal: bill.subtotal,
-                discount: bill.discount,
-                taxableAmount: bill.taxableAmount,
-                vatCollected: bill.vatCollected,
-                grandTotal: bill.grandTotal,
-                restaurantId: bill.restaurantId,
-                createdAt: bill.createdAt
-            };
-        });
+        const bills = dbBills.map(bill => ({
+            id: bill._id,
+            _id: bill._id,
+            orderId: bill.orderId,
+            restaurantName: bill.restaurantName,
+            location: bill.location,
+            panOrVat: bill.panOrVat,
+            invoiceNo: bill.invoiceNo,
+            billTo: bill.billTo,
+            tableNumber: bill.tableNumber,
+            paymentMethod: bill.paymentMethod,
+            cashPaidMoney: bill.cashPaidMoney,
+            eSewaPaidMoney: bill.eSewaPaidMoney,
+            khaltiPaidMoney: bill.khaltiPaidMoney,
+            imePayPaidMoney: bill.imePayPaidMoney,
+            date: bill.date,
+            items: bill.items,
+            subtotal: bill.subtotal,
+            discount: bill.discount,
+            taxableAmount: bill.taxableAmount,
+            vatCollected: bill.vatCollected,
+            grandTotal: bill.grandTotal,
+            restaurantId: bill.restaurantId,
+            createdAt: bill.createdAt
+        }));
 
         return res.status(200).json({
             success: true,
@@ -617,12 +921,12 @@ app.get("/api/bills", async (req, res) => {
         });
     }
 });
-app.patch("/api/bills/:id", async (req, res) => {
+
+app.patch("/api/bills/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { paymentMethod, cashPaidMoney, eSewaPaidMoney, khaltiPaidMoney, imePayPaidMoney } = req.body;
 
-        // Build an update object dynamically with whatever was sent
         const updateFields = {};
         if (paymentMethod !== undefined) updateFields.paymentMethod = paymentMethod;
         if (cashPaidMoney !== undefined) updateFields.cashPaidMoney = parseNum(cashPaidMoney);
@@ -630,17 +934,17 @@ app.patch("/api/bills/:id", async (req, res) => {
         if (khaltiPaidMoney !== undefined) updateFields.khaltiPaidMoney = parseNum(khaltiPaidMoney);
         if (imePayPaidMoney !== undefined) updateFields.imePayPaidMoney = parseNum(imePayPaidMoney);
 
-        const updatedBill = await Bill.findByIdAndUpdate(
-            id,
+        // Ensure users can only update bills belonging to their restaurant (unless admin)
+        const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+
+        const updatedBill = await Bill.findOneAndUpdate(
+            query,
             updateFields,
             { new: true, runValidators: true }
         );
 
         if (!updatedBill) {
-            return res.status(404).json({
-                success: false,
-                message: "Bill not found."
-            });
+            return res.status(404).json({ success: false, message: "Bill not found or unauthorized." });
         }
 
         return res.status(200).json({
@@ -653,355 +957,326 @@ app.patch("/api/bills/:id", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to update bill.",
-            error: error.message
+            error: process.env.NODE_ENV === "production" ? undefined : error.message
         });
     }
 });
-
 
 
 // ==========================================
 // 🧾 Stock
 // ==========================================
 
-
-// ### 1. CREATE (POST) - Add New Stock
-app.post("/api/stocks", async (req, res) => {
+app.post("/api/stocks", requireAuth, async (req, res) => {
     try {
-        const { restaurantId, stockName, quantity, closingStock, perPiecePrice } = req.body;
-        
-        // Automatically calculate totalPrice on the backend for data integrity
+        const { stockName, quantity, closingStock, perPiecePrice } = req.body;
+        const restaurantId = req.auth.restaurantId; // Securely take from session
+
         const calculatedTotalPrice = parseNum(quantity) * parseNum(perPiecePrice);
 
         const newStock = new Stock({
             restaurantId,
             stockName,
             quantity,
-            closingStock, // Added closingStock here
+            closingStock,
             perPiecePrice,
             totalPrice: calculatedTotalPrice,
         });
 
         const savedStock = await newStock.save();
-        
+
         res.status(201).json({
             success: true,
             message: "Stock created successfully",
             data: savedStock,
         });
     } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: error.message,
-        });
+        res.status(400).json({ success: false, message: error.message });
     }
 });
 
-
-// ### 2. READ (GET) - Get All Stocks (with optional filter by restaurantId)
-app.get("/api/stocks", async (req, res) => {
+app.get("/api/stocks", requireAuth, async (req, res) => {
     try {
-        const { restaurantId } = req.query;
-        const filter = restaurantId ? { restaurantId } : {};
-        
+        const restaurantId = req.auth.restaurantId;
+        const filter = req.auth.isAdmin ? {} : { restaurantId };
+
         const stocks = await Stock.find(filter);
-        
+
         res.status(200).json({
             success: true,
             count: stocks.length,
             data: stocks,
         });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
-
-// ### 3. READ (GET) - Get Single Stock by ID
-app.get("/api/stocks/:id", async (req, res) => {
+app.get("/api/stocks/:id", requireAuth, async (req, res) => {
     try {
-        const stock = await Stock.findById(req.params.id);
-        
+        const query = req.auth.isAdmin 
+            ? { _id: req.params.id } 
+            : { _id: req.params.id, restaurantId: req.auth.restaurantId };
+
+        const stock = await Stock.findOne(query);
+
         if (!stock) {
-            return res.status(404).json({
-                success: false,
-                message: "Stock item not found",
-            });
+            return res.status(404).json({ success: false, message: "Stock item not found" });
         }
-        
-        res.status(200).json({
-            success: true,
-            data: stock,
-        });
+
+        res.status(200).json({ success: true, data: stock });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
-
-// ### 4. UPDATE (PUT) - Update Stock by ID (Automatically handles closingStock via req.body)
-app.put("/api/stocks/:id", async (req, res) => {
+app.put("/api/stocks/:id", requireAuth, async (req, res) => {
     try {
         let updateData = { ...req.body };
+        const query = req.auth.isAdmin 
+            ? { _id: req.params.id } 
+            : { _id: req.params.id, restaurantId: req.auth.restaurantId };
 
-        // If quantity or perPiecePrice is being updated, recalculate totalPrice automatically
         if (updateData.quantity !== undefined || updateData.perPiecePrice !== undefined) {
-            const existingStock = await Stock.findById(req.params.id);
+            const existingStock = await Stock.findOne(query);
             if (!existingStock) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Stock item not found",
-                });
+                return res.status(404).json({ success: false, message: "Stock item not found" });
             }
             const q = updateData.quantity !== undefined ? parseNum(updateData.quantity) : existingStock.quantity;
             const p = updateData.perPiecePrice !== undefined ? parseNum(updateData.perPiecePrice) : existingStock.perPiecePrice;
             updateData.totalPrice = q * p;
         }
 
-        const updatedStock = await Stock.findByIdAndUpdate(
-            req.params.id,
+        const updatedStock = await Stock.findOneAndUpdate(
+            query,
             updateData,
-            { new: true, runValidators: true } // `runValidators` ensures schema validations apply during updates
+            { new: true, runValidators: true }
         );
-        
+
         if (!updatedStock) {
-            return res.status(404).json({
-                success: false,
-                message: "Stock item not found",
-            });
+            return res.status(404).json({ success: false, message: "Stock item not found" });
         }
-        
-        res.status(200).json({
-            success: true,
-            message: "Stock updated successfully",
-            data: updatedStock,
-        });
+
+        res.status(200).json({ success: true, message: "Stock updated successfully", data: updatedStock });
     } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: error.message,
-        });
+        res.status(400).json({ success: false, message: error.message });
     }
 });
 
-
-// ### 5. DELETE - Delete Stock by ID
-app.delete("/api/stocks/:id", async (req, res) => {
+app.delete("/api/stocks/:id", requireAuth, async (req, res) => {
     try {
-        const deletedStock = await Stock.findByIdAndDelete(req.params.id);
-        
+        const query = req.auth.isAdmin 
+            ? { _id: req.params.id } 
+            : { _id: req.params.id, restaurantId: req.auth.restaurantId };
+
+        const deletedStock = await Stock.findOneAndDelete(query);
+
         if (!deletedStock) {
-            return res.status(404).json({
-                success: false,
-                message: "Stock item not found",
-            });
+            return res.status(404).json({ success: false, message: "Stock item not found" });
         }
-        
-        res.status(200).json({
-            success: true,
-            message: "Stock deleted successfully",
-        });
+
+        res.status(200).json({ success: true, message: "Stock deleted successfully" });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
 
-
-
-
-
-app.post("/api/auth/login", async (req, res) => {
+app.get("/api/restaurant/time", requireAuth, async (req, res) => {
     try {
-        const { pharmacyName, id, password } = req.body;
+        // Non-admins can only ever see their own restaurant's time — same
+        // restaurantId that /api/bills and /api/orders already use, taken
+        // from the token, never trusted from the query string.
+        const lookupId = req.auth.isAdmin
+            ? (str(req.query.restaurantId) || req.auth.restaurantId)
+            : req.auth.restaurantId;
 
-         if (!pharmacyName || !id || !password) {
-           return res.status(400).json({ success: false, message: "Restaurant name, ID and password are required." });
+        if (!lookupId) {
+            return res.status(400).json({ success: false, message: "restaurantId is required." });
         }
 
-        const pharmacy = await PharmacyUser.findOne({ id });
-        if (!pharmacy) {
-            return res.status(404).json({ success: false, message: "User not found." });
+        let restaurant = await RestaurantUser.findOne({ id: lookupId });
+        if (!restaurant) {
+            return res.status(404).json({ success: false, message: "Account not found." });
         }
 
-           const dbPharmacyName = (pharmacy.pharmacyName || "").trim().toLowerCase();
-        const submittedPharmacyName = pharmacyName.trim().toLowerCase();
-
-        if (dbPharmacyName !== submittedPharmacyName) {
-            return res.status(401).json({ success: false, message: "Restaurant name does not match our records." });
-        }
-
-
-        if (!pharmacy.isActive) {
-            return res.status(403).json({ success: false, message: "Account is deactivated. Contact Admin." });
-        }
-
-        if (pharmacy.password !== password) {
-            return res.status(401).json({ success: false, message: "Invalid credentials." });
-        }
+        restaurant = await syncRemainingTime(restaurant);
 
         return res.status(200).json({
             success: true,
-            message: "Login successful!",
-            user: {
-                _id: pharmacy._id,
-                id: pharmacy.id,
-                pharmacyName: pharmacy.pharmacyName,
-                phone: pharmacy.phone,      
-                email: pharmacy.email,     
-                location: pharmacy.location,
-                PanOrVat: pharmacy.PanOrVat,
-                isAdmin: pharmacy.isAdmin   
-            }
+            data: {
+                totalTime: restaurant.totalTime,
+                remainingTime: restaurant.remainingTime,
+            },
         });
-
     } catch (error) {
-        console.error("🔴 LOGIN ERROR:", error);
-        return res.status(500).json({ success: false, message: "Server error during login." });
+        console.error("🔴 RESTAURANT TIME ERROR:", error);
+        return res.status(500).json({ success: false, message: "Could not load subscription time." });
     }
 });
-/**
- * 🛠️ USED BY: ADMIN DASHBOARD
- * POST: Create/Register a new Pharmacy User account
- * URL: /api/admin/users
- */
-app.post("/api/admin/users", async (req, res) => {
+
+// ==========================================
+// 🛠️ ADMIN ROUTES (restaurant accounts)
+// ==========================================
+
+// List all restaurant accounts (admin only). Passwords are never returned.
+// Add requireAuth before requireAdmin
+// Add requireAuth before requireAdmin
+app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const { pharmacyName, id, password, phone, email, location, PanOrVat } = req.body;
+        const users = await RestaurantUser.find({}).sort({ createdAt: -1 });
+        res.json({ success: true, data: users.map(publicUser) });
+    } catch (error) {
+        console.error("🔴 ADMIN LIST ERROR:", error);
+        res.status(500).json({ success: false, message: "Could not load accounts." });
+    }
+});
 
-        if (!pharmacyName || !id || !password || !phone || !email || !location) {
-            return res.status(400).json({ success: false, message: "All fields are required." });
+// Create a restaurant account (admin only)
+app.post("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const b = req.body || {};
+        const restaurantName = str(b.restaurantName || b.RESTAURANTName);
+        const id = str(b.id);
+        const phone = str(b.phone);
+        const email = str(b.email);
+        const location = str(b.location);
+        const PanOrVat = str(b.PanOrVat);
+
+        if (!restaurantName) {
+            return res.status(400).json({ success: false, message: "Restaurant name is required." });
         }
+        const pwError = validateNewPassword(b.password);
+        if (pwError) return res.status(400).json({ success: false, message: pwError });
 
-        const existingUser = await PharmacyUser.findOne({ id });
-        if (existingUser) {
+        if (await RestaurantUser.exists({ id })) {
             return res.status(400).json({ success: false, message: "User ID already exists." });
         }
+        if (await RestaurantUser.exists({ restaurantName }).collation({ locale: "en", strength: 2 })) {
+            return res.status(400).json({ success: false, message: "A restaurant with this name already exists." });
+        }
 
-        const newPharmacy = await PharmacyUser.create({
-            pharmacyName,
+        const created = await RestaurantUser.create({
+            restaurantName,
             id,
-            password: password, 
-            phone, 
-            email,   
+            password: await hashPassword(b.password),
+            phone,
+            email,
             location,
             PanOrVat,
-            isActive: true
+            isActive: true,
+            totalTime: Number(b.totalTime) || 30,
+            remainingTime: Number(b.remainingTime) || 30
         });
 
         return res.status(201).json({
             success: true,
-            message: "New pharmacy user created successfully by Admin!",
-            data: newPharmacy
+            message: "New restaurant account created successfully!",
+            data: publicUser(created)
         });
-
     } catch (error) {
         console.error("🔴 ADMIN USER CREATION ERROR:", error);
         return res.status(500).json({ success: false, message: "Server error while creating user." });
     }
 });
-/**
- * 🛠️ USED BY: ADMIN DASHBOARD
- * GET: Fetch a single user's profile details (includes plain text password)
- * URL: /api/admin/users/:id
- */
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    const allUsers = await PharmacyUser.find({});
-    // We return an array directly in 'data'
-    res.json({ success: true, data: allUsers });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-/**
- * 🛠️ USED BY: ADMIN DASHBOARD
- * PUT: Update user properties (includes updating password in plain text)
- * URL: /api/admin/users/:id
- */
-app.put("/api/admin/users/:userId", async (req, res) => {
+
+// Update a restaurant account.
+app.put("/api/admin/users/:userId", requireAuth, requireManager, async (req, res) => {
     try {
         const { userId } = req.params;
-        const { pharmacyName, id, password, phone, email, location, PanOrVat, isActive } = req.body;
-
-        const pharmacy = await PharmacyUser.findById(userId);
-        if (!pharmacy) {
-            return res.status(404).json({ success: false, message: "User not found." });
+        if (!mongoose.isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: "Invalid id." });
+        }
+        if (!req.auth.isAdmin && userId !== req.auth.uid) {
+            return res.status(403).json({ success: false, message: "You can only edit your own restaurant." });
         }
 
-        const oldPharmacyName = pharmacy.pharmacyName;
+        const restaurant = await RestaurantUser.findById(userId).select("+password");
+        if (!restaurant) return res.status(404).json({ success: false, message: "User not found." });
 
-        if (id && id.trim() !== pharmacy.id) {
-            const existing = await PharmacyUser.findOne({ id: id.trim() });
-            if (existing) {
+        const b = req.body || {};
+        const oldName = restaurant.restaurantName;
+        const oldId = restaurant.id;
+
+        if (str(b.id) && str(b.id) !== restaurant.id) {
+            if (await RestaurantUser.exists({ id: str(b.id) })) {
                 return res.status(400).json({ success: false, message: "That ID is already taken." });
             }
-            pharmacy.id = id.trim();
+            restaurant.id = str(b.id);
         }
 
-        if (pharmacyName) pharmacy.pharmacyName = pharmacyName;
-        if (phone) pharmacy.phone = phone;
-        if (email) pharmacy.email = email;
-        if (location) pharmacy.location = location;
-        if (PanOrVat !== undefined) pharmacy.PanOrVat = PanOrVat;
-        if (password) pharmacy.password = password;
-        if (isActive !== undefined) pharmacy.isActive = isActive;
+        const newRestaurantName = str(b.restaurantName || b.RESTAURANTName);
+        if (newRestaurantName && newRestaurantName !== restaurant.restaurantName) {
+            const clash = await RestaurantUser
+                .exists({ restaurantName: newRestaurantName, _id: mongoose.trusted({ $ne: restaurant._id }) })
+                .collation({ locale: "en", strength: 2 });
+            if (clash) return res.status(400).json({ success: false, message: "A restaurant with this name already exists." });
+            restaurant.restaurantName = newRestaurantName;
+        }
 
-        await pharmacy.save();
+        if (str(b.phone)) restaurant.phone = str(b.phone);
+        if (str(b.email)) restaurant.email = str(b.email);
+        if (str(b.location)) restaurant.location = str(b.location);
+        if (b.PanOrVat !== undefined) restaurant.PanOrVat = str(b.PanOrVat);
 
-        // Cascade the rename into PharmacyStaff so staff logins keep working
-        if (pharmacyName && oldPharmacyName !== pharmacyName) {
-            await PharmacyStaff.updateMany(
-                { pharmacyName: oldPharmacyName },
-                { $set: { pharmacyName: pharmacyName } }
+        // ✨ UPDATE TIME ALLOCATIONS (ADMIN ONLY)
+        if (req.auth.isAdmin) {
+            if (b.totalTime !== undefined) restaurant.totalTime = Number(b.totalTime);
+            if (b.remainingTime !== undefined) restaurant.remainingTime = Number(b.remainingTime);
+            // Restart the daily countdown from right now, so the elapsed days
+            // since the account's last sync aren't immediately re-subtracted
+            // from whatever new number the admin just set.
+            if (b.totalTime !== undefined || b.remainingTime !== undefined) {
+                restaurant.lastTimeSync = new Date();
+            }
+        }
+
+        if (b.password) {
+            const pwError = validateNewPassword(b.password);
+            if (pwError) return res.status(400).json({ success: false, message: pwError });
+            restaurant.password = await hashPassword(b.password);
+        }
+
+        if (req.auth.isAdmin && b.isActive !== undefined) {
+            if (restaurant.isAdmin && b.isActive !== true) {
+                return res.status(400).json({ success: false, message: "An admin account cannot be deactivated." });
+            }
+            restaurant.isActive = b.isActive === true;
+        }
+
+        await restaurant.save();
+
+        if (restaurant.restaurantName !== oldName) {
+            await RestaurantStaff.updateMany({ restaurantName: oldName }, { $set: { restaurantName: restaurant.restaurantName } });
+        }
+        if (restaurant.id !== oldId) {
+            await Promise.all(
+                [Menu, Order, Table, Bill, Stock].map((M) =>
+                    M.updateMany({ restaurantId: oldId }, { $set: { restaurantId: restaurant.id } })
+                )
             );
         }
 
-        return res.status(200).json({
-            success: true,
-            message: "Updated successfully.",
-            data: {
-                _id: pharmacy._id,
-                id: pharmacy.id,
-                pharmacyName: pharmacy.pharmacyName,
-                phone: pharmacy.phone,
-                email: pharmacy.email,
-                location: pharmacy.location,
-                PanOrVat: pharmacy.PanOrVat,
-                isActive: pharmacy.isActive,
-                isAdmin: pharmacy.isAdmin
-            }
-        });
+        return res.status(200).json({ success: true, message: "Updated successfully.", data: publicUser(restaurant) });
     } catch (error) {
         console.error("🔴 UPDATE USER ERROR:", error);
         return res.status(500).json({ success: false, message: "Server error during update." });
     }
 });
-/**
- * 🛠️ USED BY: ADMIN DASHBOARD
- * DELETE: Completely remove a Pharmacy User account from DB
- * URL: /api/admin/users/:id
- */
-app.delete("/api/admin/users/:id", async (req, res) => {
-    try {
-        const deletedUser = await PharmacyUser.findByIdAndDelete(req.params.id);
-        if (!deletedUser) {
-            return res.status(404).json({ success: false, message: "Account profile not found." });
-        }
 
-        return res.status(200).json({
-            success: true,
-            message: "Pharmacy account permanently deleted by Admin."
-        });
+// Delete a restaurant account (admin only)
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid id." });
+        }
+        const target = await RestaurantUser.findById(req.params.id);
+        if (!target) return res.status(404).json({ success: false, message: "Account profile not found." });
+        if (target.isAdmin) {
+            return res.status(400).json({ success: false, message: "An admin account cannot be deleted." });
+        }
+        await target.deleteOne();
+        return res.status(200).json({ success: true, message: "Restaurant account permanently deleted by Admin." });
     } catch (error) {
         console.error("🔴 ADMIN DELETE USER ERROR:", error);
         return res.status(500).json({ success: false, message: "Error deleting account." });
@@ -1009,166 +1284,189 @@ app.delete("/api/admin/users/:id", async (req, res) => {
 });
 
 // ==========================================
-// 👥 STAFF ROUTES (PharmacyStaff collection ONLY — never PharmacyUser)
+// 👥 STAFF ROUTES (Manager of that restaurant, or Admin)
 // ==========================================
+const STAFF_ROLES = ["Manager", "Waiter", "Kitchen Staff", "Cashier"];
 
-// 1. CREATE: Add new staff login for a specific pharmacy
-app.post("/api/staff/login", async (req, res) => {
-    const { id, password, pharmacyName } = req.body;
-    const staff = await PharmacyStaff.findOne({ id, pharmacyName });
-    
-    if (staff && staff.password === password) {
-        if (staff.isActive === false) {
-            return res.status(403).json({ 
-                message: "Your account is deactivated. Only active staff can log in." 
-            });
-        }
-        
-        res.json({ 
-            token: "mock-jwt-token", 
-            user: { id: staff.id, staffName: staff.staffName, role: staff.role, pharmacyName: staff.pharmacyName } 
-        });
-    } else {
-        res.status(401).json({ message: "Invalid credentials" });
-    }
+const publicStaff = (s) => ({
+    _id: s._id,
+    id: s.id,
+    staffName: s.staffName,
+    role: s.role,
+    restaurantName: s.restaurantName,
+    isActive: s.isActive
 });
 
+// A non-admin may only touch staff of their own restaurant.
+const findStaffInScope = async (req, mongoId) => {
+    if (!mongoose.isValidObjectId(mongoId)) return null;
+    const staff = await RestaurantStaff.findById(mongoId).select("+password");
+    if (!staff) return null;
+    if (!req.auth.isAdmin && staff.restaurantName !== req.auth.restaurantName) return null;
+    return staff;
+};
 
-app.post("/api/auth/verify", async (req, res) => {
-    const { token, id } = req.body;
-
-    // staff/legacy path
-    if (token === "mock-jwt-token") {
-        return res.json({ 
-            success: true, 
-            user: { id: "admin", role: "Manager", pharmacyName: "Your Pharmacy" } 
-        });
-    }
-
-    // pharmacy path — actually check the DB instead of a hardcoded string
-    if (id) {
-        const pharmacy = await PharmacyUser.findOne({ id });
-        if (pharmacy && pharmacy.isActive) {
-            return res.json({
-                success: true,
-                user: {
-                    _id: pharmacy._id,
-                    id: pharmacy.id,
-                    pharmacyName: pharmacy.pharmacyName,
-                    isAdmin: pharmacy.isAdmin
-                }
-            });
-        }
-    }
-
-    return res.status(401).json({ success: false, message: "Invalid token" });
-});
-
-
-app.post("/api/staff/create", async (req, res) => {
+app.get("/api/admin/staff-by-restaurant/:restaurantName", requireAuth, requireManager, async (req, res) => {
     try {
-        const staffData = req.body;
-        const newStaff = await PharmacyStaff.create(staffData);
-        res.status(201).json({ success: true, message: "Staff created", data: newStaff });
-    } catch (error) {
-        res.status(500).json({ error: "Creation failed" });
-    }
-});
-
-// 2. READ: Get staff ONLY for the pharmacy that was clicked in the dashboard
-app.get("/api/admin/staff-by-pharmacy/:pharmacyName", async (req, res) => {
-    try {
-        const staff = await PharmacyStaff.find({ pharmacyName: req.params.pharmacyName });
-        res.status(200).json({ success: true, data: staff });
+        if (!req.auth.isAdmin && req.params.restaurantName !== req.auth.restaurantName) {
+            return res.status(403).json({ success: false, message: "Not allowed." });
+        }
+        const staff = await RestaurantStaff.find({ restaurantName: req.params.restaurantName });
+        res.status(200).json({ success: true, data: staff.map(publicStaff) });
     } catch (err) {
         res.status(500).json({ success: false, message: "Error fetching staff" });
     }
 });
 
-// 3. UPDATE: Update staff by ID (the MongoDB _id)
-app.put("/api/staff/:id", async (req, res) => {
+app.post("/api/staff/create", requireAuth, requireManager, async (req, res) => {
     try {
-        const updatedStaff = await PharmacyStaff.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        );
-        if (!updatedStaff) {
-            return res.status(404).json({ error: "Staff member not found" });
+        const b = req.body || {};
+        const restaurantName = req.auth.isAdmin 
+    ? str(b.restaurantName || b.RESTAURANTName) 
+    : req.auth.restaurantName;
+        const id = str(b.id);
+        const staffName = str(b.staffName);
+        const role = str(b.role);
+
+        if (!restaurantName || !id || !staffName || !b.password) {
+            return res.status(400).json({ success: false, message: "Staff name, ID and password are required." });
         }
-        res.status(200).json({ success: true, data: updatedStaff });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
+        if (!STAFF_ROLES.includes(role)) {
+            return res.status(400).json({ success: false, message: `Role must be one of: ${STAFF_ROLES.join(", ")}.` });
+        }
+        const pwError = validateNewPassword(b.password);
+        if (pwError) return res.status(400).json({ success: false, message: pwError });
+
+        if (!(await RestaurantUser.exists({ restaurantName }))) {
+            return res.status(404).json({ success: false, message: "Restaurant not found." });
+        }
+        if (await RestaurantStaff.exists({ restaurantName, id })) {
+            return res.status(400).json({ success: false, message: "A staff member with this ID already exists." });
+        }
+
+        const created = await RestaurantStaff.create({
+            staffName,
+            restaurantName,
+            id,
+            role,
+            password: await hashPassword(b.password),
+            isActive: b.isActive !== false
+        });
+        res.status(201).json({ success: true, message: "Staff created", data: publicStaff(created) });
+    } catch (error) {
+        console.error("🔴 STAFF CREATE ERROR:", error);
+        res.status(500).json({ success: false, message: "Creation failed" });
     }
 });
 
-// 4. DELETE: Remove staff by ID
-app.delete("/api/staff/:id", async (req, res) => {
+app.put("/api/staff/:id", requireAuth, requireManager, async (req, res) => {
     try {
-        const deleted = await PharmacyStaff.findByIdAndDelete(req.params.id);
-        if (!deleted) {
-            return res.status(404).json({ error: "Staff member not found" });
+        const staff = await findStaffInScope(req, req.params.id);
+        if (!staff) return res.status(404).json({ success: false, message: "Staff member not found" });
+
+        const b = req.body || {};
+        const isSelf = String(staff._id) === req.auth.staffId;
+
+        if (str(b.staffName)) staff.staffName = str(b.staffName);
+
+        if (str(b.id) && str(b.id) !== staff.id) {
+            if (await RestaurantStaff.exists({ restaurantName: staff.restaurantName, id: str(b.id) })) {
+                return res.status(400).json({ success: false, message: "That staff ID is already taken." });
+            }
+            staff.id = str(b.id);
         }
-        res.status(200).json({ message: "Staff member deleted successfully" });
+        if (b.role !== undefined) {
+            if (!STAFF_ROLES.includes(str(b.role))) {
+                return res.status(400).json({ success: false, message: "Invalid role." });
+            }
+            if (isSelf && str(b.role) !== staff.role) {
+                return res.status(400).json({ success: false, message: "You cannot change your own role." });
+            }
+            staff.role = str(b.role);
+        }
+        if (b.isActive !== undefined) {
+            if (isSelf && b.isActive !== true) {
+                return res.status(400).json({ success: false, message: "You cannot deactivate your own account." });
+            }
+            staff.isActive = b.isActive === true;
+        }
+        if (b.password) {
+            const pwError = validateNewPassword(b.password);
+            if (pwError) return res.status(400).json({ success: false, message: pwError });
+            staff.password = await hashPassword(b.password);
+        }
+
+        await staff.save();
+        res.status(200).json({ success: true, data: publicStaff(staff) });
     } catch (err) {
-        res.status(500).json({ error: "Failed to delete staff" });
+        console.error("🔴 STAFF UPDATE ERROR:", err);
+        res.status(400).json({ success: false, message: "Could not update staff member." });
     }
 });
 
-// const createDefaultAdmin = async () => {
-//     try {
-//         const existingAdmin = await PharmacyUser.findOne({
-//             isAdmin: true
-//         });
-
-//         if (existingAdmin) {
-//             console.log("✅ Admin account already exists");
-//             return;
-//         }
-
-//         const admin = new PharmacyUser({
-//             phone: "0000000000",
-//             email: "admin@pharmacy.com",
-//             location: "Admin",
-//             PanOrVat: "",
-//             pharmacyName: "Pharmacy Admin",
-//             id: "123",
-//             password: "123",
-//             isActive: true,
-//             isAdmin: true
-//         });
-
-//         await admin.save();
-
-//         console.log("✅ Default Pharmacy Admin created successfully");
-//         console.log("Admin ID: 123");
-//         console.log("Admin Password: 123");
-
-//     } catch (error) {
-//         console.error("❌ Admin creation failed:", error.message);
-//     }
-// };
-
-
-
-// Start DB connection before starting server
-conectDb().then(() => {
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Pharmacy full-stack server running on port ${PORT}`);
-  });
-}).catch((err) => {
-  console.error("❌ Critical System Halt: Server could not start because Database connection failed.");
+app.delete("/api/staff/:id", requireAuth, requireManager, async (req, res) => {
+    try {
+        const staff = await findStaffInScope(req, req.params.id);
+        if (!staff) return res.status(404).json({ success: false, message: "Staff member not found" });
+        if (String(staff._id) === req.auth.staffId) {
+            return res.status(400).json({ success: false, message: "You cannot delete your own account." });
+        }
+        await staff.deleteOne();
+        res.status(200).json({ success: true, message: "Staff member deleted successfully" });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to delete staff" });
+    }
 });
 
+// Placeholder so the dashboard's customer lookup does not fail (no customer feature yet).
+app.get("/api/customers", (req, res) => {
+    res.json({ success: true, data: [] });
+});
 
-// conectDb().then(async () => {
+// ==========================================
+// Fallbacks
+// ==========================================
+app.use("/api", (req, res) => {
+    res.status(404).json({ success: false, message: "API route not found." });
+});
 
-//   await createDefaultAdmin();
+// Central error handler: never leak stack traces or internals to the browser.
+app.use((err, req, res, next) => {
+    if (err && err.message && err.message.startsWith("CORS")) {
+        return res.status(403).json({ success: false, message: "Origin not allowed." });
+    }
+    // Bad JSON, body too large, etc. are the client's fault, not a server crash.
+    if (err && err.status >= 400 && err.status < 500) {
+        return res.status(err.status).json({
+            success: false,
+            message: err.type === "entity.too.large" ? "Request body is too large." : "Invalid request."
+        });
+    }
+    console.error("🔴 UNHANDLED ERROR:", err);
+    res.status(500).json({ success: false, message: "Something went wrong on the server." });
+});
 
-//   app.listen(Number(PORT), "0.0.0.0", () => {
-//     console.log(`Pharmacy full-stack server running on port ${PORT}`);
-//   });
+// Start the server ONLY after the database is connected.
 
-// }).catch((err) => {
-//   console.error("❌ Critical System Halt:", err);
-// });
+
+conectDb()
+    .then(async () => {
+        // Automatically drop the old single-field index if it exists
+        try {
+            await mongoose.connection.collection('qrconfigs').dropIndex('restaurantName_1');
+            console.log('✅ Old restaurantName_1 index dropped successfully.');
+        } catch (err) {
+            // Index already dropped or doesn't exist — safe to ignore
+        }
+
+        app.listen(Number(PORT), "0.0.0.0", () => {
+            console.log(`✅ RMS server running on port ${PORT}`);
+        });
+    })
+    .catch((err) => {
+        console.error("❌ Server not started: database connection failed.", err);
+        process.exit(1);
+    });
+
+
+    

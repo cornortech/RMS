@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText,
   Search,
@@ -9,14 +10,20 @@ import {
   Receipt,
   X,
   Printer,
+  RefreshCcw,
+  TrendingUp,
+  ShieldCheck,
+  Wallet,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
-import { Sale, Patient } from '../types';
+import { Sale, Customer } from '../types';
 import { TRANSLATIONS } from '../translations';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://rms-0wk0.onrender.com';
+const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')).trim().replace(/\/+$/, '');
 const BILLS_URL = `${API_BASE}/api/bills`;
 
-const getLoggedInPharmacyId = (): string => {
+const getLoggedInRESTAURANTId = (): string => {
   try {
     const raw = localStorage.getItem('user');
     if (!raw) return '';
@@ -28,10 +35,9 @@ const getLoggedInPharmacyId = (): string => {
 };
 
 interface BillingManagerProps {
-  sales: Sale[];
-  patients: Patient[];
+  Customers: Customer[];
   lang: 'en' | 'ne';
-  currentUserRole: 'Receptionist' | 'Pharmacist' | 'Owner';
+  currentUserRole: 'Viewer' | 'restoacist' | 'Owner';
   onBillingUpdated: () => void;
   onViewInvoice: (sale: Sale) => void;
 }
@@ -74,8 +80,6 @@ function money(n: number): string {
   return (Number.isFinite(n) ? n : 0).toFixed(2);
 }
 
-// Builds the list of "method: amount" pairs actually paid on a bill,
-// used both in the ledger's method badge and on the printed receipt.
 function getPaidBreakdown(bill: RawBill): { label: string; amount: number }[] {
   return [
     { label: 'Cash', amount: bill.cashPaidMoney ?? 0 },
@@ -86,7 +90,55 @@ function getPaidBreakdown(bill: RawBill): { label: string; amount: number }[] {
 }
 
 // ==========================================
-// PRINTABLE INVOICE MODAL — same style as CreateBill's BillModal
+// PORTAL — renders children straight into document.body so a
+// position:fixed modal always centers on the real viewport and
+// can never be trapped by an ancestor's transform/overflow/filter.
+// ==========================================
+const ModalPortal: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  if (typeof document === 'undefined') return null;
+  return createPortal(children, document.body);
+};
+
+// ==========================================
+// PRINT STYLES — only #printable-bill is visible when printing,
+// forced to 80mm thermal-paper width with bold black text.
+// ==========================================
+const PRINT_STYLES = `
+  @media print {
+    body * {
+      visibility: hidden !important;
+    }
+    #printable-bill,
+    #printable-bill * {
+      visibility: visible !important;
+    }
+    #printable-bill {
+      position: fixed !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 80mm !important;
+      max-width: 80mm !important;
+      margin: 0 !important;
+      padding: 3mm 2mm !important;
+      box-shadow: none !important;
+      border: none !important;
+      background: #ffffff !important;
+    }
+    #printable-bill * {
+      color: #000000 !important;
+      font-weight: 900 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
+  }
+`;
+
+// ==========================================
+// LIGHT CLEAN THERMAL INVOICE MODAL
 // ==========================================
 
 function InvoiceModal({
@@ -105,170 +157,208 @@ function InvoiceModal({
   const hasDiscount = (bill?.discount ?? 0) > 0;
   const paidBreakdown = getPaidBreakdown(bill);
 
+  // Escape closes the modal.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Lock page scroll while the modal is open.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-fade-in">
-      <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl border border-gray-100">
-        <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-          <span className="font-bold text-gray-900 flex items-center gap-1.5 text-sm">
-            <Receipt className="h-5 w-5 text-purple-600" />
-            {lang === 'en' ? 'Thermal Invoice' : 'बिजक'}
-          </span>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-950 cursor-pointer">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <ModalPortal>
+      <style>{PRINT_STYLES}</style>
+      <div
+        className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200 overflow-y-auto"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-lg w-full my-auto p-5 space-y-4 shadow-2xl border border-slate-100 relative overflow-hidden max-h-[min(680px,calc(100vh-48px))] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
 
-        {/* 80mm Thermal Receipt Preview Container */}
-        <div className="flex justify-center bg-gray-200 p-4 rounded-xl overflow-y-auto max-h-[420px]">
-          <div
-            id="printable-bill"
-            style={{
-              fontFamily: "'Courier New', Courier, monospace",
-              width: '72mm',
-              margin: '0 auto',
-              padding: '4mm 2mm',
-              color: '#000000',
-              backgroundColor: '#ffffff',
-              fontWeight: 900,
-            }}
-            className="space-y-3 shadow-md text-xs"
-          >
-            <div className="text-center space-y-0.5 pb-2 border-b-2 border-black border-dashed">
-              <h3 className="text-sm font-black uppercase tracking-tight text-black">
-                {bill.restaurantName}
-              </h3>
-              <p className="text-[10px] font-bold text-black">{bill.location}</p>
-              <p className="font-black text-[10px]">PAN / VAT No: {bill.panOrVat}</p>
-              <h4 className="text-xs font-black uppercase border-y border-black py-1 tracking-wider mt-1 text-black">
-                {lang === 'en' ? 'INVOICE / BILL' : 'बिजक'}
-              </h4>
+          {/* Decorative background shapes */}
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-violet-100 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-sky-100 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex justify-between items-center border-b border-slate-100 pb-3 relative z-10 flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-violet-500/30">
+                <Receipt className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm">
+                  {lang === 'en' ? 'Thermal Invoice Preview' : 'बिजक प्रिभ्यु'}
+                </h3>
+                <p className="text-[11px] text-slate-400 font-semibold">Invoice No: {bill.invoiceNo}</p>
+              </div>
             </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer border border-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            <div className="space-y-1 border-b-2 border-black pb-2 text-[11px] leading-tight font-black">
-              <div className="flex justify-between">
-                <span>Invoice No:</span>
-                <span className="font-mono">{bill.invoiceNo}</span>
+          {/* 80mm Thermal Receipt Preview Container */}
+          <div className="flex justify-center bg-slate-50 p-4 rounded-xl overflow-y-auto flex-1 min-h-0 border border-slate-200/60 shadow-inner relative z-10">
+            <div
+              id="printable-bill"
+              style={{
+                fontFamily: "'Courier New', Courier, monospace",
+                width: '72mm',
+                margin: '0 auto',
+                padding: '4mm 2mm',
+                color: '#000000',
+                backgroundColor: '#ffffff',
+                fontWeight: 900,
+              }}
+              className="space-y-2.5 shadow-md rounded-sm text-xs border border-slate-200"
+            >
+              <div className="text-center space-y-0.5 pb-2 border-b-2 border-black border-dashed">
+                <h3 className="text-xs font-black uppercase tracking-tight text-black">
+                  {bill.restaurantName}
+                </h3>
+                <p className="text-[9px] font-bold text-black">{bill.location}</p>
+                <p className="font-black text-[9px]">PAN / VAT No: {bill.panOrVat}</p>
+                <h4 className="text-[10px] font-black uppercase border-y border-black py-0.5 tracking-wider mt-1 text-black">
+                  {lang === 'en' ? 'INVOICE / BILL' : 'बिजक'}
+                </h4>
               </div>
-              <div className="flex justify-between">
-                <span>Date:</span>
-                <span className="font-mono">{new Date(bill.date || bill.createdAt || '').toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Bill To:</span>
-                <span>{bill.billTo}</span>
-              </div>
-              {bill.tableNumber && (
+
+              <div className="space-y-0.5 border-b-2 border-black pb-2 text-[10px] leading-tight font-black">
                 <div className="flex justify-between">
-                  <span>Table:</span>
-                  <span>{bill.tableNumber}</span>
+                  <span>Invoice No:</span>
+                  <span className="font-mono">{bill.invoiceNo}</span>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span>Payment:</span>
-                <span>{bill.paymentMethod}</span>
+                <div className="flex justify-between">
+                  <span>Date:</span>
+                  <span className="font-mono">{new Date(bill.date || bill.createdAt || '').toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Bill To:</span>
+                  <span>{bill.billTo}</span>
+                </div>
+                {bill.tableNumber && (
+                  <div className="flex justify-between">
+                    <span>Table:</span>
+                    <span>{bill.tableNumber}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Payment:</span>
+                  <span>{bill.paymentMethod}</span>
+                </div>
               </div>
-            </div>
 
-            <table className="w-full text-[11px] leading-tight font-black">
-              <thead>
-                <tr className="border-b border-black text-left">
-                  <th className="pb-1">Item</th>
-                  <th className="pb-1 text-center">Qty</th>
-                  <th className="pb-1 text-right">Rate</th>
-                  <th className="pb-1 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dashed divide-black border-b-2 border-black">
-                {billItems.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="py-1 font-black">{item.itemName}</td>
-                    <td className="py-1 text-center font-mono">{item.quantity}</td>
-                    <td className="py-1 text-right font-mono">{money(item.rate)}</td>
-                    <td className="py-1 text-right font-mono">{money(item.total)}</td>
+              <table className="w-full text-[10px] leading-tight font-black">
+                <thead>
+                  <tr className="border-b border-black text-left">
+                    <th className="pb-1">Item</th>
+                    <th className="pb-1 text-center">Qty</th>
+                    <th className="pb-1 text-right">Rate</th>
+                    <th className="pb-1 text-right">Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="space-y-1 text-[11px] font-black">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span className="font-mono">NPR {money(bill.subtotal)}</span>
-              </div>
-              {hasDiscount && (
-                <div className="flex justify-between">
-                  <span>Discount ({discountPercent.toFixed(1)}%):</span>
-                  <span className="font-mono">-NPR {money(bill.discount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>Taxable Amount:</span>
-                <span className="font-mono">NPR {money(bill.taxableAmount)}</span>
-              </div>
-              {hasVat && (
-                <div className="flex justify-between">
-                  <span>VAT ({vatRate.toFixed(1)}%):</span>
-                  <span className="font-mono">NPR {money(bill.vatCollected)}</span>
-                </div>
-              )}
-              <div className="flex justify-between border-t-2 border-black pt-1 text-xs font-black">
-                <span>GRAND TOTAL:</span>
-                <span className="font-mono">NPR {money(bill.grandTotal)}</span>
-              </div>
-
-              {/* Per-method payment breakdown — shows only methods that were actually used */}
-              {paidBreakdown.length > 0 && (
-                <div className="pt-1 mt-1 border-t border-dashed border-black space-y-0.5">
-                  {paidBreakdown.map((p) => (
-                    <div className="flex justify-between" key={p.label}>
-                      <span>Paid via {p.label}:</span>
-                      <span className="font-mono">NPR {money(p.amount)}</span>
-                    </div>
+                </thead>
+                <tbody className="divide-y divide-dashed divide-black border-b-2 border-black">
+                  {billItems.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="py-0.5 font-black">{item.itemName}</td>
+                      <td className="py-0.5 text-center font-mono">{item.quantity}</td>
+                      <td className="py-0.5 text-right font-mono">{money(item.rate)}</td>
+                      <td className="py-0.5 text-right font-mono">{money(item.total)}</td>
+                    </tr>
                   ))}
-                </div>
-              )}
-            </div>
+                </tbody>
+              </table>
 
-            <div className="pt-6 border-t border-dashed border-black text-[9px] font-black space-y-1.5 text-center">
-              <div>Thank you, visit again!</div>
-              <div>Powered By: Atithi RMS by Cornor Tech Pvt. Ltd.</div>
+              <div className="space-y-0.5 text-[10px] font-black">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span className="font-mono">NPR {money(bill.subtotal)}</span>
+                </div>
+                {hasDiscount && (
+                  <div className="flex justify-between">
+                    <span>Discount ({discountPercent.toFixed(1)}%):</span>
+                    <span className="font-mono">-NPR {money(bill.discount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Taxable Amount:</span>
+                  <span className="font-mono">NPR {money(bill.taxableAmount)}</span>
+                </div>
+                {hasVat && (
+                  <div className="flex justify-between">
+                    <span>VAT ({vatRate.toFixed(1)}%):</span>
+                    <span className="font-mono">NPR {money(bill.vatCollected)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t-2 border-black pt-1 text-[11px] font-black">
+                  <span>GRAND TOTAL:</span>
+                  <span className="font-mono">NPR {money(bill.grandTotal)}</span>
+                </div>
+
+                {paidBreakdown.length > 0 && (
+                  <div className="pt-1 mt-1 border-t border-dashed border-black space-y-0.5">
+                    {paidBreakdown.map((p) => (
+                      <div className="flex justify-between" key={p.label}>
+                        <span>Paid via {p.label}:</span>
+                        <span className="font-mono">NPR {money(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-dashed border-black text-[8px] font-black space-y-1 text-center">
+                <div>Thank you, visit again!</div>
+                <div>Powered By: Atithi RMS by Cornor Tech Pvt. Ltd.</div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold uppercase tracking-wider rounded-lg border border-gray-200 cursor-pointer"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Printer className="h-4 w-4" />
-            Print Invoice
-          </button>
+          <div className="flex items-center justify-end gap-2.5 pt-1 relative z-10 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md shadow-violet-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Print Receipt
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 
 // ==========================================
-// MAIN BILLING MANAGER
+// MAIN VIBRANT LIGHT BILLING MANAGER
 // ==========================================
 
 export default function BillingManager({
-  patients,
+  Customers,
   lang,
-  onViewInvoice,
 }: BillingManagerProps) {
   const t = TRANSLATIONS[lang];
-  const [pharmacyId, setPharmacyId] = useState<string>(getLoggedInPharmacyId());
+  const [, setRESTAURANTId] = useState<string>(getLoggedInRESTAURANTId());
   const [bills, setBills] = useState<RawBill[]>([]);
   const [billsLoading, setBillsLoading] = useState(true);
   const [billsError, setBillsError] = useState('');
@@ -279,14 +369,14 @@ export default function BillingManager({
     setBillsLoading(true);
     setBillsError('');
 
-    const currentPharmacyId = getLoggedInPharmacyId();
-    setPharmacyId(currentPharmacyId);
+    const currentRESTAURANTId = getLoggedInRESTAURANTId();
+    setRESTAURANTId(currentRESTAURANTId);
 
-    if (!currentPharmacyId) {
+    if (!currentRESTAURANTId) {
       setBillsError(
         lang === 'en'
-          ? 'No pharmacy ID found. Please log in again.'
-          : 'फार्मेसी आईडी फेला परेन। कृपया फेरि लगइन गर्नुहोस्।'
+          ? 'No RESTAURANT ID found. Please log in again.'
+          : 'रेस्टुरेन्ट आईडी फेला परेन। कृपया फेरि लगइन गर्नुहोस्।'
       );
       setBills([]);
       setBillsLoading(false);
@@ -294,7 +384,7 @@ export default function BillingManager({
     }
 
     try {
-      const url = `${BILLS_URL}?restaurantId=${encodeURIComponent(currentPharmacyId)}`;
+      const url = `${BILLS_URL}?restaurantId=${encodeURIComponent(currentRESTAURANTId)}`;
       const res = await fetch(url);
       const result = await res.json();
       if (!res.ok || !result.success) {
@@ -317,21 +407,18 @@ export default function BillingManager({
     if (!searchQuery.trim()) return bills;
     const q = searchQuery.toLowerCase().trim();
     return bills.filter((inv) => {
-      const patient = patients.find((p) => p.fullName === inv.billTo);
+      const Customer = Customers.find((p) => p.fullName === inv.billTo);
       return (
         inv.invoiceNo.toLowerCase().includes(q) ||
         (inv.billTo || '').toLowerCase().includes(q) ||
-        (patient && patient.id.toLowerCase().includes(q))
+        (Customer && Customer.id.toLowerCase().includes(q))
       );
     });
-  }, [searchQuery, bills, patients]);
+  }, [searchQuery, bills, Customers]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todaysInvoices = bills.filter((inv) => (inv.date || inv.createdAt || '').startsWith(todayStr));
 
-  // Summed directly from the per-method fields, so split-payment bills contribute
-  // their actual cash/eSewa/Khalti/IMEPay portions instead of only counting
-  // toward whichever single label paymentMethod happened to hold.
   const cashToday = todaysInvoices.reduce((sum, s) => sum + (s.cashPaidMoney || 0), 0);
   const esewaToday = todaysInvoices.reduce((sum, s) => sum + (s.eSewaPaidMoney || 0), 0);
   const khaltiToday = todaysInvoices.reduce((sum, s) => sum + (s.khaltiPaidMoney || 0), 0);
@@ -341,175 +428,273 @@ export default function BillingManager({
   const totalVatToday = todaysInvoices.reduce((sum, s) => sum + (s.vatCollected || 0), 0);
 
   return (
-    <div className="grid grid-cols-1 gap-6" id="billing-root">
-      <div className="space-y-6" id="billing-ledger-card">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-xs p-5 space-y-4" id="daily-summary-ledger">
-          <h2 className="text-base font-bold text-gray-900 tracking-tight flex items-center gap-1.5 uppercase">
-            <Activity className="h-5 w-5 text-purple-600" />
-            {t.dailySummary}
-          </h2>
+    <div className="space-y-6 pb-8 font-sans" id="billing-root">
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" id="daily-summary-grid">
-            <div className="p-4 bg-gray-50 border border-gray-150 rounded-xl space-y-1">
-              <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">💵 CASH RECONC.</span>
-              <p className="font-mono font-bold text-gray-900 text-sm">NPR {cashToday.toFixed(2)}</p>
-            </div>
-            <div className="p-4 bg-gray-50 border border-gray-150 rounded-xl space-y-1">
-              <span className="text-[10px] uppercase font-bold text-[#60bb46] block tracking-wider">🟢 eSewa Total</span>
-              <p className="font-mono font-bold text-gray-900 text-sm">NPR {esewaToday.toFixed(2)}</p>
-            </div>
-            <div className="p-4 bg-gray-50 border border-gray-150 rounded-xl space-y-1">
-              <span className="text-[10px] uppercase font-bold text-[#5c2d91] block tracking-wider">🟣 Khalti Total</span>
-              <p className="font-mono font-bold text-gray-900 text-sm">NPR {khaltiToday.toFixed(2)}</p>
-            </div>
-            <div className="p-4 bg-gray-50 border border-gray-150 rounded-xl space-y-1">
-              <span className="text-[10px] uppercase font-bold text-red-500 block tracking-wider">🔴 IME Pay Total</span>
-              <p className="font-mono font-bold text-gray-900 text-sm">NPR {imeToday.toFixed(2)}</p>
-            </div>
+      {/* SECTION 1: Colorful Light Mode Summary Cards */}
+      <div className="space-y-3" id="daily-summary-ledger">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              <div className="p-2 bg-gradient-to-tr from-violet-600 to-indigo-600 text-white rounded-xl shadow-sm shadow-violet-500/20">
+                <Activity className="h-4 w-4" />
+              </div>
+              {t.dailySummary}
+            </h2>
+            <p className="text-[11px] text-slate-500 font-medium">Live collection overview & revenue streams for today</p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 pt-3 text-xs text-gray-600" id="daily-vat-summary">
-            <div className="flex justify-between items-center p-3.5 bg-purple-50/20 border border-purple-100 rounded-xl">
-              <span className="font-bold text-purple-800 uppercase tracking-wider text-[10px]">{lang === 'en' ? 'Taxable Revenue' : 'कर योग्य कुल संकलन'}</span>
-              <span className="font-mono font-bold text-gray-900">NPR {totalTaxableToday.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between items-center p-3.5 bg-indigo-50/20 border border-indigo-100 rounded-xl">
-              <span className="font-bold text-indigo-800 uppercase tracking-wider text-[10px]">{t.vatCollected} (VAT)</span>
-              <span className="font-mono font-bold text-purple-700">NPR {totalVatToday.toFixed(2)}</span>
-            </div>
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[11px] font-bold text-slate-700">
+              {new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'ne-NP', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-xs p-5 space-y-4" id="invoices-ledger-panel">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-2 border-b border-gray-100 gap-3">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight flex items-center gap-2">
-              <FileText className="h-5 w-5 text-purple-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" id="daily-summary-grid">
+
+          {/* Cash Card */}
+          <div className="bg-gradient-to-br from-emerald-500/5 via-white to-white p-4.5 rounded-2xl border border-emerald-100 shadow-2xs hover:shadow-sm hover:border-emerald-300 transition-all duration-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-400/10 rounded-full blur-xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="flex items-center justify-between mb-2 relative z-10">
+              <span className="text-[11px] uppercase font-extrabold text-emerald-700 tracking-wider flex items-center gap-1.5">
+                <Wallet className="h-3.5 w-3.5" /> Cash Drawer
+              </span>
+              <span className="px-1.5 py-0.5 bg-emerald-100/80 text-emerald-800 rounded-md text-[9px] font-extrabold">Active</span>
+            </div>
+            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(cashToday)}</p>
+            <div className="mt-1.5 text-[10px] text-emerald-700/80 font-semibold relative z-10 flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Reconciled
+            </div>
+          </div>
+
+          {/* eSewa Card */}
+          <div className="bg-gradient-to-br from-[#60bb46]/10 via-white to-white p-4.5 rounded-2xl border border-[#60bb46]/30 shadow-2xs hover:shadow-sm hover:border-[#60bb46] transition-all duration-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-[#60bb46]/15 rounded-full blur-xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="flex items-center justify-between mb-2 relative z-10">
+              <span className="text-[11px] uppercase font-extrabold text-[#3a7c28] tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#60bb46]"></span> eSewa Total
+              </span>
+              <span className="px-1.5 py-0.5 bg-[#60bb46]/20 text-[#3a7c28] rounded-md text-[9px] font-extrabold">Gateway</span>
+            </div>
+            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(esewaToday)}</p>
+            <div className="mt-1.5 text-[10px] text-[#3a7c28] font-semibold relative z-10 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Instant digital transfers
+            </div>
+          </div>
+
+          {/* Khalti Card */}
+          <div className="bg-gradient-to-br from-purple-500/5 via-white to-white p-4.5 rounded-2xl border border-purple-100 shadow-2xs hover:shadow-sm hover:border-purple-300 transition-all duration-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-purple-400/10 rounded-full blur-xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="flex items-center justify-between mb-2 relative z-10">
+              <span className="text-[11px] uppercase font-extrabold text-purple-700 tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-600"></span> Khalti Total
+              </span>
+              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-md text-[9px] font-extrabold">Gateway</span>
+            </div>
+            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(khaltiToday)}</p>
+            <div className="mt-1.5 text-[10px] text-purple-700/80 font-semibold relative z-10 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Verified mobile payments
+            </div>
+          </div>
+
+          {/* IME Pay Card */}
+          <div className="bg-gradient-to-br from-rose-500/5 via-white to-white p-4.5 rounded-2xl border border-rose-100 shadow-2xs hover:shadow-sm hover:border-rose-300 transition-all duration-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-rose-400/10 rounded-full blur-xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="flex items-center justify-between mb-2 relative z-10">
+              <span className="text-[11px] uppercase font-extrabold text-rose-700 tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span> IME Pay Total
+              </span>
+              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-md text-[9px] font-extrabold">Gateway</span>
+            </div>
+            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(imeToday)}</p>
+            <div className="mt-1.5 text-[10px] text-rose-700/80 font-semibold relative z-10 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Secure transactions
+            </div>
+          </div>
+
+        </div>
+
+        {/* Taxable & VAT Summary Banner */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5" id="daily-vat-summary">
+
+          {/* Taxable Revenue Card */}
+          <div className="p-5 bg-gradient-to-br from-violet-50/80 via-violet-50/30 to-white border border-violet-200 hover:border-violet-300 rounded-2xl shadow-sm flex items-center justify-between relative overflow-hidden transition-all duration-200 group">
+            <div className="absolute -right-8 -top-8 w-36 h-36 bg-violet-200/30 rounded-full blur-2xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="space-y-1.5 relative z-10">
+              <span className="text-[11px] uppercase font-bold tracking-wider text-violet-700 bg-white px-2.5 py-1 rounded-lg inline-block border border-violet-200/60 shadow-2xs">
+                {lang === 'en' ? 'Taxable Revenue (Today)' : 'कर योग्य कुल संकलन'}
+              </span>
+              <p className="font-mono font-black text-2xl tracking-tight text-slate-900">
+                NPR {money(totalTaxableToday)}
+              </p>
+            </div>
+            <div className="p-3 bg-white text-violet-700 rounded-xl relative z-10 shadow-2xs border border-violet-100 group-hover:scale-105 transition-transform">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+          </div>
+
+          {/* VAT Collected Card */}
+          <div className="p-5 bg-gradient-to-br from-sky-50/80 via-sky-50/30 to-white border border-sky-200 hover:border-sky-300 rounded-2xl shadow-sm flex items-center justify-between relative overflow-hidden transition-all duration-200 group">
+            <div className="absolute -right-8 -top-8 w-36 h-36 bg-sky-200/30 rounded-full blur-2xl pointer-events-none group-hover:scale-115 transition-transform" />
+            <div className="space-y-1.5 relative z-10">
+              <span className="text-[11px] uppercase font-bold tracking-wider text-sky-700 bg-white px-2.5 py-1 rounded-lg inline-block border border-sky-200/60 shadow-2xs">
+                {t.vatCollected} Collected (VAT)
+              </span>
+              <p className="font-mono font-black text-2xl tracking-tight text-slate-900">
+                NPR {money(totalVatToday)}
+              </p>
+            </div>
+            <div className="p-3 bg-white text-sky-700 rounded-xl relative z-10 shadow-2xs border border-sky-100 group-hover:scale-105 transition-transform">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* SECTION 2: Invoice Ledger Table & Filtering */}
+      <div className="bg-white rounded-2xl border border-slate-200/85 shadow-sm p-5 sm:p-6 space-y-4" id="invoices-ledger-panel">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-4 border-b border-slate-100 gap-3">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2 uppercase">
+              <div className="p-2 bg-violet-50 text-violet-600 rounded-xl">
+                <FileText className="h-4 w-4" />
+              </div>
               {t.invoiceList}
             </h2>
-            {billsLoading ? null : (
-              <button onClick={fetchBills} className="text-[11px] font-bold text-purple-600 hover:text-purple-700 uppercase tracking-wider">
-                {lang === 'en' ? 'Refresh' : 'ताजा गर्नुहोस्'}
-              </button>
-            )}
+            <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Explore full invoice logs, payment breakdowns, and receipt prints</p>
           </div>
+          {billsLoading ? null : (
+            <button
+              onClick={fetchBills}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100/70 px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" />
+              {lang === 'en' ? 'Refresh Ledger' : 'ताजा गर्नुहोस्'}
+            </button>
+          )}
+        </div>
 
-          <div className="relative text-xs" id="invoice-search-group">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={lang === 'en' ? 'Search by Invoice No, Patient ID, or Patient Name...' : 'बिल नम्बर वा बिरामीको नाम हाल्नुहोस्...'}
-              className="w-full pl-8 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-hidden"
-            />
-          </div>
+        {/* Search Bar */}
+        <div className="relative text-xs" id="invoice-search-group">
+          <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={lang === 'en' ? 'Search by Invoice No, Customer ID, or Customer Name...' : 'बिल नम्बर वा ग्राहकको नाम हाल्नुहोस्...'}
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all font-semibold text-slate-800 placeholder-slate-400 shadow-2xs"
+          />
+        </div>
 
-          <div className="overflow-x-auto border border-gray-100 rounded-lg" id="invoice-ledger-table-wrapper">
-            <table className="min-w-full divide-y divide-gray-100 text-xs">
-              <thead>
-                <tr className="text-left text-gray-400 uppercase tracking-wider bg-gray-50">
-                  <th className="px-4 py-3">Invoice ID</th>
-                  <th className="px-4 py-3">{lang === 'en' ? 'Patient Client' : 'बिरामी'}</th>
-                  <th className="px-4 py-3">{lang === 'en' ? 'Method' : 'भुक्तानी'}</th>
-                  <th className="px-4 py-3 text-right">{t.taxableAmount}</th>
-                  <th className="px-4 py-3 text-right">VAT</th>
-                  <th className="px-4 py-3 text-right">Total Invoice</th>
-                  <th className="px-4 py-3 text-center">{t.actions}</th>
+        {/* Ledger Table */}
+        <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-2xs" id="invoice-ledger-table-wrapper">
+          <table className="min-w-full divide-y divide-slate-100 text-xs">
+            <thead>
+              <tr className="text-left text-slate-400 uppercase font-black tracking-wider bg-slate-50/90 text-[11px]">
+                <th className="px-4 py-3">Invoice ID</th>
+                <th className="px-4 py-3">{lang === 'en' ? 'Customer Client' : 'ग्राहक'}</th>
+                <th className="px-4 py-3">{lang === 'en' ? 'Method' : 'भुक्तानी'}</th>
+                <th className="px-4 py-3 text-right">{t.taxableAmount}</th>
+                <th className="px-4 py-3 text-right">VAT</th>
+                <th className="px-4 py-3 text-right">Total Invoice</th>
+                <th className="px-4 py-3 text-center">{t.actions}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white" id="invoice-ledger-table-body">
+              {billsLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center text-slate-400">
+                    <Loader2 className="h-6 w-6 mx-auto animate-spin mb-2 text-violet-600" />
+                    <p className="font-bold text-xs">{lang === 'en' ? 'Loading billing ledger...' : 'लोड हुँदैछ...'}</p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100" id="invoice-ledger-table-body">
-                {billsLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
-                      <Loader2 className="h-6 w-6 mx-auto animate-spin mb-2" />
-                      {lang === 'en' ? 'Loading billing ledger...' : 'लोड हुँदैछ...'}
-                    </td>
-                  </tr>
-                ) : billsError ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-red-500">
-                      <PackageX className="h-6 w-6 mx-auto mb-2" />
-                      <p>{billsError}</p>
-                      <button onClick={fetchBills} className="text-purple-600 font-bold text-xs underline mt-1">
-                        {lang === 'en' ? 'Retry' : 'फेरि प्रयास गर्नुहोस्'}
-                      </button>
-                    </td>
-                  </tr>
-                ) : filteredInvoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400 italic">
-                      <Database className="h-6 w-6 mx-auto mb-2 stroke-1" />
-                      No invoices match criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInvoices.map((invoice) => {
-                    const pat = patients.find((p) => p.fullName === invoice.billTo);
-                    const paidBreakdown = getPaidBreakdown(invoice);
-                    const isSplit = invoice.paymentMethod === 'Split' || paidBreakdown.length > 1;
+              ) : billsError ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center text-rose-500">
+                    <PackageX className="h-6 w-6 mx-auto mb-2" />
+                    <p className="font-bold text-xs mb-1.5">{billsError}</p>
+                    <button onClick={fetchBills} className="text-violet-600 font-bold text-xs underline hover:text-violet-700">
+                      {lang === 'en' ? 'Retry Connection' : 'फेरि प्रयास गर्नुहोस्'}
+                    </button>
+                  </td>
+                </tr>
+              ) : filteredInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center text-slate-400">
+                    <div className="p-3 bg-slate-50 rounded-full w-fit mx-auto mb-2 text-slate-300">
+                      <Database className="h-6 w-6 stroke-1" />
+                    </div>
+                    <p className="font-bold text-xs">No invoices match criteria.</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredInvoices.map((invoice) => {
+                  const pat = Customers.find((p) => p.fullName === invoice.billTo);
+                  const paidBreakdown = getPaidBreakdown(invoice);
+                  const isSplit = invoice.paymentMethod === 'Split' || paidBreakdown.length > 1;
 
-                    return (
-                      <tr key={invoice.invoiceNo} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3.5 font-mono text-gray-500 font-bold">{invoice.invoiceNo}</td>
-                        <td className="px-4 py-3.5">
-                          {pat ? (
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-gray-900">{pat.fullName}</span>
-                              <span className="text-[10px] text-gray-400 block font-mono">({pat.id})</span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">{invoice.billTo || t.walkIn}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <div className="space-y-1">
-                            <span className={`inline-flex px-1.5 py-0.2 rounded font-bold text-[10px] uppercase border ${
-                              invoice.paymentMethod === 'Cash' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                              invoice.paymentMethod === 'eSewa' ? 'bg-[#60bb46]/10 text-[#4c9b36] border-[#60bb46]/30' :
-                              invoice.paymentMethod === 'Khalti' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                              invoice.paymentMethod === 'IMEPay' ? 'bg-sky-50 text-sky-700 border-sky-200' :
-                              invoice.paymentMethod === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                              'bg-purple-50 text-purple-700 border-purple-200'
-                            }`}>
-                              {invoice.paymentMethod}
-                            </span>
-                            {/* Per-method breakdown, shown only for split payments */}
-                            {isSplit && paidBreakdown.length > 0 && (
-                              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] font-mono text-gray-400">
-                                {paidBreakdown.map((p) => (
-                                  <span key={p.label}>
-                                    {p.label}: {money(p.amount)}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                  return (
+                    <tr key={invoice.invoiceNo} className="hover:bg-violet-50/30 transition-colors group">
+                      <td className="px-4 py-3 font-mono text-slate-800 font-extrabold">{invoice.invoiceNo}</td>
+                      <td className="px-4 py-3">
+                        {pat ? (
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-slate-900">{pat.fullName}</span>
+                            <span className="text-[10px] text-slate-400 block font-mono">({pat.id})</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-mono">
-                          NPR {(invoice.taxableAmount || 0).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-mono">
-                          NPR {(invoice.vatCollected || 0).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-mono font-bold text-purple-700 font-semibold">
-                          NPR {invoice.grandTotal.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            onClick={() => setViewingBill(invoice)}
-                            className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-purple-600"
-                            title="View/Print Thermal Invoice"
-                          >
-                            <FileText className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                        ) : (
+                          <span className="text-slate-600 font-semibold italic">{invoice.billTo || t.walkIn}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="space-y-1">
+                          <span className={`inline-flex px-2 py-0.5 rounded-lg font-extrabold text-[10px] uppercase border tracking-wide shadow-2xs ${
+                            invoice.paymentMethod === 'Cash' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            invoice.paymentMethod === 'eSewa' ? 'bg-[#60bb46]/10 text-[#3a7c28] border-[#60bb46]/30' :
+                            invoice.paymentMethod === 'Khalti' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            invoice.paymentMethod === 'IMEPay' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            invoice.paymentMethod === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}>
+                            {invoice.paymentMethod}
+                          </span>
+                          {isSplit && paidBreakdown.length > 0 && (
+                            <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] font-mono text-slate-500 font-semibold">
+                              {paidBreakdown.map((p) => (
+                                <span key={p.label} className="bg-slate-100 px-1 py-0.5 rounded border border-slate-200/60">
+                                  {p.label}: {money(p.amount)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600 font-semibold">
+                        NPR {(invoice.taxableAmount || 0).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600 font-semibold">
+                        NPR {(invoice.vatCollected || 0).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-violet-700 text-xs">
+                        NPR {invoice.grandTotal.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => setViewingBill(invoice)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-violet-600 rounded-lg text-slate-600 hover:text-white transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1 active:scale-95 font-bold text-[11px]"
+                          title="View/Print Thermal Invoice"
+                        >
+                          <FileText className="h-3 w-3" />
+                          <span>View</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Printer, Receipt } from "lucide-react";
+import { X, Printer, Receipt, Calendar, TrendingUp, DollarSign, ShoppingBag, ShieldCheck, Sparkles, ArrowRight } from "lucide-react";
 
-const API_BASE_URL = 'https://rms-0wk0.onrender.com/api';
+const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api`;
 
 interface OrderItem {
   itemName: string;
@@ -34,27 +34,30 @@ const TotalOrder: React.FC<TotalOrderProps> = ({ restaurantId }) => {
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBill, setShowBill] = useState(false);
+  const [restaurantName, setRestaurantName] = useState<string | null>(null);
 
-  // Resolve the current restaurant's id and _id from localStorage (pharmacyUser)
-const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
-  try {
-    const raw = localStorage.getItem("pharmacyUser");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.id || parsed?._id) {
-        return {
-          currentRestaurantId: parsed?.id ?? null,
-          currentRestaurantIdAlt: parsed?._id ?? null,
-        };
+  // Resolve current restaurant's id and _id from localStorage (RESTAURANTUser)
+  const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("RESTAURANTUser");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.id || parsed?._id) {
+          if (parsed?.RESTAURANTName) {
+            setRestaurantName(parsed.RESTAURANTName);
+          }
+          return {
+            currentRestaurantId: parsed?.id ?? null,
+            currentRestaurantIdAlt: parsed?._id ?? null,
+          };
+        }
       }
+    } catch (e) {
+      console.error("Failed to parse RESTAURANTUser from localStorage:", e);
     }
-  } catch (e) {
-    console.error("Failed to parse pharmacyUser from localStorage:", e);
-  }
-  // fallback to prop only if localStorage didn't give us anything
-  if (restaurantId) return { currentRestaurantId: restaurantId, currentRestaurantIdAlt: null };
-  return { currentRestaurantId: null, currentRestaurantIdAlt: null };
-}, [restaurantId]);
+    if (restaurantId) return { currentRestaurantId: restaurantId, currentRestaurantIdAlt: null };
+    return { currentRestaurantId: null, currentRestaurantIdAlt: null };
+  }, [restaurantId]);
 
   useEffect(() => {
     fetchOrders();
@@ -80,16 +83,7 @@ const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
     }
   };
 
-  // Debug: check console to see which field actually matches
-  useEffect(() => {
-    if (orders.length > 0) {
-      console.log("currentRestaurantId (id):", currentRestaurantId);
-      console.log("currentRestaurantIdAlt (_id):", currentRestaurantIdAlt);
-      console.log("sample order restaurantId values:", orders.slice(0, 5).map(o => o.restaurantId));
-    }
-  }, [orders, currentRestaurantId, currentRestaurantIdAlt]);
-
-  // Only orders belonging to the logged-in restaurant (match on either id or _id)
+  // Only orders belonging to the logged-in restaurant
   const restaurantOrders = useMemo(() => {
     if (!currentRestaurantId && !currentRestaurantIdAlt) return [];
     return orders.filter((o) => {
@@ -101,14 +95,14 @@ const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
     });
   }, [orders, currentRestaurantId, currentRestaurantIdAlt]);
 
- const completedOrders = useMemo(
-  () =>
-    restaurantOrders.filter((o) => {
-      const paymentStatus = String(o.paymentStatus ?? "").toLowerCase().trim();
-      return paymentStatus === "paid" || paymentStatus === "pending";
-    }),
-  [restaurantOrders]
-);
+  const completedOrders = useMemo(
+    () =>
+      restaurantOrders.filter((o) => {
+        const paymentStatus = String(o.paymentStatus ?? "").toLowerCase().trim();
+        return paymentStatus === "paid" || paymentStatus === "pending";
+      }),
+    [restaurantOrders]
+  );
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -124,7 +118,7 @@ const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
     });
   };
 
-  // Group completed orders by date -> one row per day
+  // Group completed orders by date
   const dailySummaries = useMemo(() => {
     const map: Record<string, { date: string; orders: Order[]; totalAmount: number; orderCount: number }> = {};
     completedOrders.forEach((order) => {
@@ -180,7 +174,17 @@ const { currentRestaurantId, currentRestaurantIdAlt } = useMemo(() => {
 
   const totalOrdersCount = ordersForSelectedDate.length;
 
-const handlePrint = () => {
+  const totalRevenueAllTime = useMemo(
+    () => dailySummaries.reduce((sum, day) => sum + day.totalAmount, 0),
+    [dailySummaries]
+  );
+
+  const totalCompletedOrdersCount = useMemo(
+    () => dailySummaries.reduce((sum, day) => sum + day.orderCount, 0),
+    [dailySummaries]
+  );
+
+  const handlePrint = () => {
     const printContent = document.getElementById("bill-print-area");
     if (!printContent) return;
 
@@ -229,17 +233,24 @@ const handlePrint = () => {
       printWindow.close();
     }, 250);
   };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-10">
-        <p className="text-gray-500">Loading orders...</p>
+      <div className="flex flex-col items-center justify-center min-h-[450px] gap-4 bg-gradient-to-br from-slate-50 to-purple-50/30 rounded-3xl">
+        <div className="relative">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-600 border-t-transparent" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-purple-600 animate-pulse" />
+          </div>
+        </div>
+        <p className="text-sm font-semibold text-slate-500 animate-pulse">Analyzing daily sales records...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 text-center text-red-600 bg-red-50 rounded-lg">
+      <div className="max-w-xl mx-auto mt-10 p-6 rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-orange-50 text-red-700 text-center font-medium shadow-sm">
         {error}
       </div>
     );
@@ -247,179 +258,286 @@ const handlePrint = () => {
 
   if (!currentRestaurantId && !currentRestaurantIdAlt) {
     return (
-      <div className="p-6 text-center text-red-600 bg-red-50 rounded-lg">
+      <div className="max-w-xl mx-auto mt-10 p-6 rounded-2xl border border-red-200 bg-red-50 text-red-700 text-center font-medium shadow-sm">
         Unable to identify restaurant. Please log in again.
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4 text-gray-800">
-        Daily Sales 
-      </h1>
+    <div className="min-h-full bg-gradient-to-br from-slate-50 via-purple-50/20 to-indigo-50/30 font-sans antialiased text-slate-800 p-4 sm:p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200 bg-white">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                Date
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                Total Orders
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                Total Sales
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
-                Bill
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {dailySummaries.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  No orders found.
-                </td>
-              </tr>
-            ) : (
-              dailySummaries.map((day) => (
-                <tr key={day.date} className="hover:bg-gray-50 transition">
-                  <td className="px-4 py-3 text-sm text-gray-700 font-medium">
-                    {formatDisplayDate(day.date)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {day.orderCount}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 font-medium">
-                    Rs. {day.totalAmount.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => handleViewBill(day.date)}
-                      className="inline-flex items-center justify-center p-2 rounded-full hover:bg-purple-100 text-purple-600 transition"
-                      title="View day's sales bill"
-                    >
-                      <Receipt size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {showBill && selectedDate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-              <h2 className="font-semibold text-gray-800">Sales Bill</h2>
-              <button
-                onClick={() => setShowBill(false)}
-                className="p-1 rounded-full hover:bg-gray-100 text-gray-500"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-4 flex justify-center bg-gray-50">
-              <div
-                id="bill-print-area"
-                style={{
-                  width: "80mm",
-                  fontFamily: "'Courier New', monospace",
-                  fontSize: "12px",
-                  padding: "8px",
-                  background: "#fff",
-                }}
-              >
-                <div className="center bold header-title" style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px" }}>
-                  DAILY SALES BILL
-                </div>
-                <div className="center small" style={{ textAlign: "center", fontSize: "10px" }}>
-                  Date: {formatDisplayDate(selectedDate)}
-                </div>
-                <div className="center small" style={{ textAlign: "center", fontSize: "10px" }}>
-                  Total Orders: {totalOrdersCount}
-                </div>
-
-                <div className="divider" style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", padding: "2px 0" }}>Item</th>
-                      <th style={{ textAlign: "right", padding: "2px 0" }}>Qty</th>
-                      <th style={{ textAlign: "right", padding: "2px 0" }}>Amt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {aggregatedItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} style={{ textAlign: "center", padding: "10px 0" }}>
-                          No sales for this date.
-                        </td>
-                      </tr>
-                    ) : (
-                      aggregatedItems.map((item, idx) => (
-                        <tr key={idx} className="item-row">
-                          <td style={{ padding: "3px 0" }}>{item.name}</td>
-                          <td style={{ textAlign: "right", padding: "3px 0" }}>
-                            {item.qty}
-                          </td>
-                          <td style={{ textAlign: "right", padding: "3px 0" }}>
-                            {item.total > 0 ? item.total.toFixed(2) : "-"}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-
-                <div className="divider" style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-
-                <div
-                  className="total-row"
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontWeight: "bold",
-                    fontSize: "13px",
-                  }}
-                >
-                  <span>Grand Total</span>
-                  <span>Rs. {grandTotal.toFixed(2)}</span>
-                </div>
-
-                <div className="divider" style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-
-                <div className="center small" style={{ textAlign: "center", fontSize: "10px" }}>
-                  Thank you!
-                </div>
+        {/* Light Header Hero Section matching your requested layout style */}
+        <div className="relative overflow-hidden bg-gradient-to-r from-purple-100 via-purple-50 to-indigo-100 p-6 sm:p-8 rounded-3xl text-slate-900 shadow-xl shadow-purple-900/5 border border-purple-200/60">
+          <div className="absolute right-0 top-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-purple-300/30 blur-3xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 bg-white/80 backdrop-blur-md border border-purple-200 rounded-2xl flex items-center justify-center text-purple-700 shadow-sm">
+                <Calendar className="h-7 w-7 text-purple-600" />
               </div>
-            </div>
-
-            <div className="p-4 border-t border-gray-200 flex gap-2 sticky bottom-0 bg-white">
-              <button
-                onClick={() => setShowBill(false)}
-                className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
-              >
-                Close
-              </button>
-              <button
-                onClick={handlePrint}
-                className="flex-1 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 flex items-center justify-center gap-2 transition"
-              >
-                <Printer size={16} />
-                Print
-              </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-200/60 border border-purple-300/60 text-[11px] font-extrabold text-purple-800 uppercase tracking-wider">
+                    <Sparkles className="h-3 w-3 text-purple-700" /> Sales Analytics
+                  </span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Daily Sales Overview</h1>
+                <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mt-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-purple-600" />
+                  {restaurantName ? restaurantName : "Restaurant Portal"}
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      )}
+
+        {/* Vibrant Metric KPI Cards with Colored Light Backgrounds */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          
+          {/* Card 1: Revenue */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white p-6 rounded-3xl border border-emerald-500/20 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <div className="absolute right-4 top-4 h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
+              <DollarSign className="h-6 w-6" />
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-wider text-emerald-800/80 mb-1">Total Sales Revenue</p>
+            <p className="text-3xl font-black text-slate-900 tracking-tight">
+              Rs. {totalRevenueAllTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <div className="mt-4 flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+              <span>Lifetime generated sales</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </div>
+
+          {/* Card 2: Orders Count */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-white p-6 rounded-3xl border border-purple-500/20 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <div className="absolute right-4 top-4 h-12 w-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-600 group-hover:scale-110 transition-transform">
+              <ShoppingBag className="h-6 w-6" />
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-wider text-purple-800/80 mb-1">Completed Orders</p>
+            <p className="text-3xl font-black text-slate-900 tracking-tight">{totalCompletedOrdersCount}</p>
+            <div className="mt-4 flex items-center gap-1.5 text-xs font-bold text-purple-700">
+              <span>Successfully settled orders</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </div>
+
+          {/* Card 3: Active Days */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-white p-6 rounded-3xl border border-indigo-500/20 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <div className="absolute right-4 top-4 h-12 w-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-wider text-indigo-800/80 mb-1">Active Summary Days</p>
+            <p className="text-3xl font-black text-slate-900 tracking-tight">{dailySummaries.length}</p>
+            <div className="mt-4 flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+              <span>Recorded business dates</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Modern Table Card */}
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Daily Records Breakdown</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Click "View Bill" to check complete item-wise billing summaries per day.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500">
+                  <th className="px-6 py-4 text-[11px] font-extrabold uppercase tracking-wider">Business Date</th>
+                  <th className="px-6 py-4 text-[11px] font-extrabold uppercase tracking-wider">Total Orders</th>
+                  <th className="px-6 py-4 text-[11px] font-extrabold uppercase tracking-wider">Total Daily Sales</th>
+                  <th className="px-6 py-4 text-[11px] font-extrabold uppercase tracking-wider text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dailySummaries.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-20 text-center">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="h-16 w-16 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-1 shadow-inner">
+                          <Receipt className="h-8 w-8" />
+                        </div>
+                        <p className="text-base font-bold text-slate-800">No completed orders found</p>
+                        <p className="text-xs text-slate-400 max-w-xs">Paid or pending order histories will automatically appear here once customers place orders.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  dailySummaries.map((day) => (
+                    <tr key={day.date} className="hover:bg-purple-50/30 transition-colors group">
+                      <td className="px-6 py-4">
+                        <span className="font-bold text-slate-900 text-sm bg-slate-100/70 group-hover:bg-purple-100/60 group-hover:text-purple-900 px-3 py-1.5 rounded-xl transition-colors">
+                          {formatDisplayDate(day.date)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-mono font-semibold text-slate-600">
+                        {day.orderCount} orders
+                      </td>
+                      <td className="px-6 py-4 text-sm font-mono font-black text-purple-900">
+                        Rs. {day.totalAmount.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handleViewBill(day.date)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-[0.98] text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-purple-600/20"
+                          title="View day's sales bill"
+                        >
+                          <Receipt size={15} />
+                          <span>View Bill</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Thermal Bill Modal */}
+        {showBill && selectedDate && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full max-h-[92vh] overflow-y-auto border border-slate-100 transform transition-all">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white z-10">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+                    <Receipt className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-slate-900 text-sm">Receipt Preview</h2>
+                    <p className="text-[10px] font-bold text-slate-400">Thermal POS Format</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBill(false)}
+                  className="h-9 w-9 rounded-full bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 flex items-center justify-center transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Thermal Bill Content Container */}
+              <div className="p-6 flex justify-center bg-slate-100/60">
+                <div
+                  id="bill-print-area"
+                  style={{
+                    width: "80mm",
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: "12px",
+                    padding: "12px",
+                    background: "#fff",
+                    boxShadow: "0 10px 25px -5px rgba(0,0,0,0.05)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div className="center bold header-title" style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px" }}>
+                    {restaurantName ? restaurantName.toUpperCase() : "DAILY SALES BILL"}
+                  </div>
+                  <div className="center small" style={{ textAlign: "center", fontSize: "10px", marginTop: "4px" }}>
+                    Date: {formatDisplayDate(selectedDate)}
+                  </div>
+                  <div className="center small" style={{ textAlign: "center", fontSize: "10px" }}>
+                    Total Orders: {totalOrdersCount}
+                  </div>
+
+                  <div className="divider" style={{ borderTop: "1px dashed #000", margin: "10px 0" }} />
+
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: "2px 0" }}>Item</th>
+                        <th style={{ textAlign: "right", padding: "2px 0" }}>Qty</th>
+                        <th style={{ textAlign: "right", padding: "2px 0" }}>Amt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aggregatedItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ textAlign: "center", padding: "10px 0" }}>
+                            No sales for this date.
+                          </td>
+                        </tr>
+                      ) : (
+                        aggregatedItems.map((item, idx) => (
+                          <tr key={idx} className="item-row">
+                            <td style={{ padding: "4px 0" }}>{item.name}</td>
+                            <td style={{ textAlign: "right", padding: "4px 0" }}>
+                              {item.qty}
+                            </td>
+                            <td style={{ textAlign: "right", padding: "4px 0" }}>
+                              {item.total > 0 ? item.total.toFixed(2) : "-"}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+
+                  <div className="divider" style={{ borderTop: "1px dashed #000", margin: "10px 0" }} />
+
+                  <div
+                    className="total-row"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: "bold",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <span>Grand Total</span>
+                    <span>Rs. {grandTotal.toFixed(2)}</span>
+                  </div>
+
+                  <div className="divider" style={{ borderTop: "1px dashed #000", margin: "10px 0" }} />
+
+                  <div className="center small" style={{ textAlign: "center", fontSize: "10px" }}>
+                    Thank you for your business!
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="p-5 border-t border-slate-100 flex gap-3 sticky bottom-0 bg-white">
+                <button
+                  onClick={() => setShowBill(false)}
+                  className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-bold transition cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="flex-1 px-4 py-3 rounded-2xl bg-purple-600 text-white hover:bg-purple-700 active:scale-[0.98] flex items-center justify-center gap-2 text-sm font-bold shadow-lg shadow-purple-600/25 transition cursor-pointer"
+                >
+                  <Printer size={16} />
+                  Print Receipt
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+      `}</style>
     </div>
   );
 };

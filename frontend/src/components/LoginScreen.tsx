@@ -16,7 +16,7 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScreenProps) {
-  const [pharmacyName, setPharmacyName] = useState('');
+  const [RESTAURANTName, setRESTAURANTName] = useState('');
   const [staffId, setStaffId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,8 +27,8 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
     en: {
       portalTitle: "Authentication Portal",
       subtitle: "Restaurant Management System",
-      pharmacyLabel: "Restaurant Name",
-      pharmacyPlaceholder: "Enter registered Restaurant name",
+      RESTAURANTLabel: "Restaurant Name",
+      RESTAURANTPlaceholder: "Enter registered Restaurant name",
       idLabel: "User ID",
       idPlaceholder: "Enter your ID",
       passLabel: "Access Password",
@@ -43,9 +43,9 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
     },
     ne: {
       portalTitle: "प्रमाणीकरण पोर्टल",
-      subtitle: "क्लिनिक र फार्मेसी व्यवस्थापन प्रणाली",
-      pharmacyLabel: "फार्मेसीको नाम",
-      pharmacyPlaceholder: "फार्मेसीको नाम हाल्नुहोस्",
+      subtitle: "रेस्टुरेन्ट व्यवस्थापन प्रणाली",
+      RESTAURANTLabel: "रेस्टुरेन्टको नाम",
+      RESTAURANTPlaceholder: "रेस्टुरेन्टको नाम हाल्नुहोस्",
       idLabel: "प्रयोगकर्ता ID",
       idPlaceholder: "आफ्नो ID हाल्नुहोस्",
       passLabel: "पहुँच पासवर्ड",
@@ -53,10 +53,10 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
       loginBtn: "प्रमाणित गर्नुहोस् र प्रवेश गर्नुहोस्",
       authenticating: "प्रमाणीकरण हुँदैछ...",
       errorHeader: "पहुँच अस्वीकृत",
-      unauthorizedTip: "केवल अधिकृत स्वास्थ्य र फार्मेसी कर्मचारीहरूलाई मात्र यो प्रणाली पहुँच गर्न अनुमति छ।",
+      unauthorizedTip: "केवल अधिकृत कर्मचारीहरूलाई मात्र यो प्रणाली पहुँच गर्न अनुमति छ।",
       envNote: "कर्मचारी परिचयपत्र सुरक्षित छन् र वास्तविक-समय डाटाबेस रेकर्डहरूसँग जाँच गरिन्छ।",
-      viewTitle: "डिजिटल फार्मेसी",
-      location: "अस्पताल रोड, बुटवल"
+      viewTitle: "डिजिटल रेस्टुरेन्ट",
+      location: ""
     }
   }[lang];
 
@@ -66,13 +66,13 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://rms-0wk0.onrender.com/api/auth/login', {
+     const response = await fetch(`${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api/auth/login`,  {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          pharmacyName: pharmacyName.trim(), 
+          restaurantName: RESTAURANTName.trim(), 
           id: staffId.trim(),                
           password                        
         }),
@@ -82,7 +82,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
 
       if (response.ok && data.success) {
         const userDetails = data.user;
-        localStorage.setItem('pharmacyUser', JSON.stringify(userDetails));
+        localStorage.setItem('RESTAURANTUser', JSON.stringify(userDetails));
         onLoginSuccess(data.token, userDetails);
       } else {
         setErrorMsg(data.message || t.errorHeader);
@@ -140,15 +140,15 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
             
             {/* Restaurant Name Field */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">{t.pharmacyLabel}</label>
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">{t.RESTAURANTLabel}</label>
               <div className="relative">
                 <Building2 className="absolute left-3.5 top-3 w-4.5 h-4.5 text-slate-400" />
                 <input
                   type="text"
                   required
-                  value={pharmacyName}
-                  onChange={(e) => setPharmacyName(e.target.value)}
-                  placeholder={t.pharmacyPlaceholder}
+                  value={RESTAURANTName}
+                  onChange={(e) => setRESTAURANTName(e.target.value)}
+                  placeholder={t.RESTAURANTPlaceholder}
                   disabled={isLoading}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50/55 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-slate-800 font-medium"
                 />

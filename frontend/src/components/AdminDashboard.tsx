@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Building2, 
-  UserPlus, 
-  Edit3, 
-  Trash2, 
-  LogOut, 
-  ShieldCheck, 
-  Activity, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Building2,
+  UserPlus,
+  Edit3,
+  Trash2,
+  LogOut,
+  ShieldCheck,
+  Activity,
   Search,
   CheckCircle,
   XCircle,
@@ -19,33 +19,46 @@ import {
   Phone,
   Mail,
   MapPin,
-  FileText
+  FileText,
+  Clock,
+  TimerReset,
+  AlertTriangle,
+  Users,
+  Sparkles
 } from 'lucide-react';
 
+// ============================================================
+// TYPES
+// ============================================================
 interface UserPayload {
   _id: string;
   id: string;
-  pharmacyName: string;
+  restaurantName?: string;
+  RESTAURANTName?: string;
 }
 
-// Pharmacy-level login account (saved in PharmacyUser collection only)
-interface PharmacyAccount {
+interface RESTAURANTAccount {
   _id: string;
   id: string;
-  pharmacyName: string;
+  restaurantName?: string;
+  RESTAURANTName?: string;
   isActive: boolean;
-  password?: string; // Optional field if returned by API
+  password?: string;
   phone?: string;
   email?: string;
   location?: string;
   PanOrVat?: string;
+  role?: string;      // used to detect the admin account
+  isAdmin?: boolean;  // used to detect the admin account
+  totalTime?: number;     // subscription length, in days
+  remainingTime?: number; // days left on the subscription
 }
 
-// Staff login account (saved in PharmacyStaff collection only)
+// Staff login account (saved in RESTAURANTStaff collection only)
 interface StaffAccount {
   _id: string;
   id: string;
-  pharmacyName: string;
+  RESTAURANTName: string;
   staffName?: string;
   role: string;
   isActive: boolean;
@@ -58,9 +71,8 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-// Role options for staff accounts (PharmacyStaff collection)
-// 🔧 Updated to match the restaurant role set used in App.tsx's
-// ROLE_ACCESS map: Manager, Waiter, Kitchen Staff, Cashier.
+// Role options for staff accounts (RESTAURANTStaff collection)
+// Matches the ROLE_ACCESS map in App.tsx: Manager, Waiter, Kitchen Staff, Cashier.
 const STAFF_ROLES = [
   'Manager',
   'Waiter',
@@ -68,17 +80,87 @@ const STAFF_ROLES = [
   'Cashier',
 ];
 
+// Accounts with one of these login IDs are treated as admin and pinned to the top of the table.
+// (The logged-in admin, role "admin" and isAdmin === true are detected automatically.)
+const ADMIN_LOGIN_IDS = ['admin'];
+
+const DEFAULT_PLAN_DAYS = 30;
+
+// ============================================================
+// SMALL HELPERS
+// ============================================================
+
+// Reads a response body without ever throwing (the server may send HTML or an empty body).
+const readJsonSafe = async (response: Response): Promise<any> => {
+  try {
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
+  } catch (err) {
+    return {};
+  }
+};
+
+// Picks the most useful error text from a server response.
+const getServerMessage = (data: any, response: Response, fallback: string): string =>
+  data?.message || data?.error || `${fallback} (HTTP ${response.status})`;
+
+// Authorization header for the /api/staff routes.
+// Uses the real login token if your app saved one (localStorage key "token"),
+// otherwise falls back to the same placeholder that was used before.
+const getAuthHeader = (): Record<string, string> => {
+  let token = '';
+  try {
+    token =
+      localStorage.getItem('token') ||
+      localStorage.getItem('authToken') ||
+      localStorage.getItem('accessToken') ||
+      sessionStorage.getItem('token') ||
+      '';
+  } catch (err) {
+    token = '';
+  }
+  return { Authorization: `Bearer ${token || 'mock-jwt-token'}` };
+};
+
+// Two-letter initials for the avatar badge, e.g. "Everest Kitchen" -> "EK"
+const getInitials = (name: string): string => {
+  const clean = String(name || '').trim();
+  if (!clean) return '??';
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+// Turns remaining/total days into a color + label for the subscription bar.
+const getTimeStatus = (remaining: number, total: number) => {
+  const safeTotal = total > 0 ? total : 1;
+  const pct = Math.max(0, Math.min(100, (remaining / safeTotal) * 100));
+  if (remaining <= 0) {
+    return { pct, bar: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', ring: 'border-rose-100', label: 'Expired' };
+  }
+  if (pct <= 20) {
+    return { pct, bar: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50', ring: 'border-amber-100', label: 'Expiring soon' };
+  }
+  return { pct, bar: 'bg-purple-500', text: 'text-emerald-700', bg: 'bg-emerald-50', ring: 'border-emerald-100', label: 'Healthy' };
+};
+
+// ============================================================
+// COMPONENT
+// ============================================================
 export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardProps) {
-  const [pharmacies, setPharmacies] = useState<PharmacyAccount[]>([]);
+  // ---------- Restaurant account list + form state ----------
+  const [Restaurants, setRestaurants] = useState<RESTAURANTAccount[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Form States for Creating/Editing Pharmacy Accounts
+  // Form States for Creating/Editing RESTAURANT Accounts
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formPharmacyName, setFormPharmacyName] = useState('');
+  const [formRESTAURANTName, setFormRESTAURANTName] = useState('');
   const [formId, setFormId] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
@@ -86,8 +168,25 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
   const [formEmail, setFormEmail] = useState('');
   const [formLocation, setFormLocation] = useState('');
   const [formPanOrVat, setFormPanOrVat] = useState('');
+  const [formTotalTime, setFormTotalTime] = useState(String(DEFAULT_PLAN_DAYS));
+  const [formRemainingTime, setFormRemainingTime] = useState(String(DEFAULT_PLAN_DAYS));
 
-  const BACKEND_URL = 'https://rms-0wk0.onrender.com';
+  // ---------- Staff modal state ----------
+  const [selectedRESTAURANT, setSelectedRESTAURANT] = useState<string | null>(null);
+  const [RESTAURANTStaff, setRESTAURANTStaff] = useState<StaffAccount[]>([]);
+  const [isStaffLoading, setIsStaffLoading] = useState(false);
+  const [isStaffSaving, setIsStaffSaving] = useState(false);
+
+  const [isStaffEditing, setIsStaffEditing] = useState(false);
+  const [staffEditingId, setStaffEditingId] = useState<string | null>(null);
+  const [staffFormId, setStaffFormId] = useState('');
+  const [staffFormName, setStaffFormName] = useState('');
+  const [staffFormPassword, setStaffFormPassword] = useState('');
+  const [staffFormRole, setStaffFormRole] = useState(STAFF_ROLES[0]);
+  const [staffFormIsActive, setStaffFormIsActive] = useState(true);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
+
+  const BACKEND_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
 
   const t = {
     en: {
@@ -101,11 +200,17 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
       tableId: "System ID",
       tableStatus: "Account Status",
       tableLocation: "Location",
+      tableTime: "Subscription",
       submitCreate: "Register System Account",
       submitUpdate: "Save Configuration Changes",
       cancelBtn: "Discard Changes",
       active: "Active",
-      inactive: "Deactivated"
+      inactive: "Deactivated",
+      adminBadge: "Admin",
+      statTotal: "Total Restaurants",
+      statActive: "Active Accounts",
+      statInactive: "Deactivated",
+      statExpiring: "Expiring Soon"
     },
     ne: {
       dashTitle: "प्रशासक केन्द्रीय कमान्ड",
@@ -118,25 +223,48 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
       tableId: "प्रणाली ID",
       tableStatus: "खाता स्थिति",
       tableLocation: "स्थान",
+      tableTime: "सदस्यता",
       submitCreate: "प्रणाली खाता दर्ता गर्नुहोस्",
       submitUpdate: "परिवर्तनहरू बचत गर्नुहोस्",
       cancelBtn: "रद्द गर्नुहोस्",
       active: "सक्रिय",
-      inactive: "निष्क्रिय"
+      inactive: "निष्क्रिय",
+      adminBadge: "एडमिन",
+      statTotal: "कुल रेस्टुरेन्ट",
+      statActive: "सक्रिय खाताहरू",
+      statInactive: "निष्क्रिय",
+      statExpiring: "चाँडै सकिने"
     }
   }[lang];
 
-  // 🔄 FETCH PHARMACY LOGIN ACCOUNTS (PharmacyUser collection — NOT staff)
-  const fetchAllPharmacies = async () => {
+  // ---------- Toast message ----------
+  const showNotice = (type: 'success' | 'error', msg: string) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotification({ type, msg });
+    noticeTimer.current = setTimeout(() => setNotification(null), type === 'error' ? 7000 : 4000);
+  };
+
+  // Makes sure BOTH name spellings exist on every restaurant object, and that
+  // time fields always fall back to sane numeric defaults.
+  const normalizeRestaurant = (item: any): RESTAURANTAccount => {
+    const name = item?.RESTAURANTName || item?.restaurantName || '';
+    const totalTime = Number.isFinite(Number(item?.totalTime)) ? Number(item.totalTime) : DEFAULT_PLAN_DAYS;
+    const remainingTime = Number.isFinite(Number(item?.remainingTime)) ? Number(item.remainingTime) : totalTime;
+    return { ...item, RESTAURANTName: name, restaurantName: name, totalTime, remainingTime };
+  };
+
+  // 🔄 FETCH RESTAURANT LOGIN ACCOUNTS (RESTAURANTUser collection — NOT staff)
+  const fetchAllRestaurants = async () => {
     setIsLoading(true);
     try {
       const response = await fetch(`${BACKEND_URL}/api/admin/users`);
-      const resData = await response.json();
+      const resData = await readJsonSafe(response);
 
       if (response.ok && resData.success) {
-        setPharmacies(Array.isArray(resData.data) ? resData.data : []);
+        const list = Array.isArray(resData.data) ? resData.data : [];
+        setRestaurants(list.map(normalizeRestaurant));
       } else {
-        showNotice('error', resData.message || 'Failed to fetch user list.');
+        showNotice('error', getServerMessage(resData, response, 'Failed to fetch user list.'));
       }
     } catch (err) {
       showNotice('error', 'Database connection failed.');
@@ -146,133 +274,16 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
   };
 
   useEffect(() => {
-    fetchAllPharmacies();
+    fetchAllRestaurants();
+    return () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    };
   }, []);
-     
-  const showNotice = (type: 'success' | 'error', msg: string) => {
-    setNotification({ type, msg });
-    setTimeout(() => setNotification(null), 4000);
-  };
-
-  // ➕ CREATE NEW PHARMACY LOGIN ACCOUNT (PharmacyUser)
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formPhone.trim() || !formEmail.trim() || !formLocation.trim()) {
-      showNotice('error', 'Phone, email and location are required.');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pharmacyName: formPharmacyName,
-          id: formId,
-          password: formPassword,
-          phone: formPhone,
-          email: formEmail,
-          location: formLocation,
-          PanOrVat: formPanOrVat
-        })
-      });
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        showNotice('success', 'Successfully generated new secure account profile!');
-        if (data.data) {
-          setPharmacies(prev => [...prev, data.data]);
-        }
-        resetForm();
-      } else {
-        showNotice('error', data.message || 'Validation matching check rejected.');
-      }
-    } catch (err) {
-      showNotice('error', 'Server offline during registration processing.');
-    }
-  };
-
-  // ✏️ UPDATE PHARMACY LOGIN ACCOUNT (PharmacyUser)
-  const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingId) return;
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/users/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pharmacyName: formPharmacyName,
-          isActive: formIsActive,
-          password: formPassword || undefined,
-          phone: formPhone,
-          email: formEmail,
-          location: formLocation,
-          PanOrVat: formPanOrVat
-        })
-      });
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        showNotice('success', 'Profile properties committed seamlessly.');
-        setPharmacies(prev => prev.map(item => item._id === editingId ? {
-          ...item,
-          pharmacyName: formPharmacyName,
-          isActive: formIsActive,
-          phone: formPhone,
-          email: formEmail,
-          location: formLocation,
-          PanOrVat: formPanOrVat
-        } : item));
-        resetForm();
-      } else {
-        showNotice('error', data.message || 'Refused to write database adjustments.');
-      }
-    } catch (err) {
-      showNotice('error', 'Database connection handshake failure during save.');
-    }
-  };
-
-  // ❌ DELETE PHARMACY LOGIN ACCOUNT (PharmacyUser)
-  const handleDeleteUser = async (id: string) => {
-    if (!window.confirm("Are you absolutely sure you want to permanently delete this system user profile? This cannot be undone.")) return;
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/users/${id}`, {
-        method: 'DELETE'
-      });
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        showNotice('success', 'Target entity wiped cleanly from collections.');
-        setPharmacies(prev => prev.filter(p => p._id !== id));
-        if (editingId === id) resetForm();
-      } else {
-        showNotice('error', data.message || 'Deletion parameters denied.');
-      }
-    } catch (err) {
-      showNotice('error', 'Network crash prevented data deletion.');
-    }
-  };
-
-  const startEditMode = (pharm: PharmacyAccount) => {
-    setIsEditing(true);
-    setEditingId(pharm._id);
-    setFormPharmacyName(pharm.pharmacyName);
-    setFormId(pharm.id);
-    setFormIsActive(pharm.isActive);
-    setFormPassword('');
-    setFormPhone(pharm.phone || '');
-    setFormEmail(pharm.email || '');
-    setFormLocation(pharm.location || '');
-    setFormPanOrVat(pharm.PanOrVat || '');
-  };
 
   const resetForm = () => {
     setIsEditing(false);
     setEditingId(null);
-    setFormPharmacyName('');
+    setFormRESTAURANTName('');
     setFormId('');
     setFormPassword('');
     setFormIsActive(true);
@@ -281,61 +292,216 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
     setFormEmail('');
     setFormLocation('');
     setFormPanOrVat('');
+    setFormTotalTime(String(DEFAULT_PLAN_DAYS));
+    setFormRemainingTime(String(DEFAULT_PLAN_DAYS));
   };
 
-  const filteredPharmacies = pharmacies.filter(pharm => 
-    pharm.pharmacyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    pharm.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const startEditMode = (resto: RESTAURANTAccount) => {
+    setIsEditing(true);
+    setEditingId(resto._id);
+    setFormRESTAURANTName(resto.RESTAURANTName || resto.restaurantName || '');
+    setFormId(resto.id);
+    setFormIsActive(resto.isActive);
+    setFormPassword('');
+    setFormPhone(resto.phone || '');
+    setFormEmail(resto.email || '');
+    setFormLocation(resto.location || '');
+    setFormPanOrVat(resto.PanOrVat || '');
+    setFormTotalTime(String(resto.totalTime ?? DEFAULT_PLAN_DAYS));
+    setFormRemainingTime(String(resto.remainingTime ?? resto.totalTime ?? DEFAULT_PLAN_DAYS));
+  };
 
-  // ============================================================
-  // STAFF MANAGEMENT (separate from pharmacy login accounts above)
-  // Wired to /api/staff endpoints -> PharmacyStaff collection only.
-  // Only loads when a specific pharmacy name is clicked, and only
-  // ever shows staff belonging to that one pharmacy.
-  // ============================================================
+  // ➕ CREATE NEW RESTAURANT LOGIN ACCOUNT (RESTAURANTUser)
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  const [selectedPharmacy, setSelectedPharmacy] = useState<string | null>(null);
-  const [pharmacyStaff, setPharmacyStaff] = useState<StaffAccount[]>([]);
-  const [isStaffLoading, setIsStaffLoading] = useState(false);
+    if (!formPhone.trim() || !formEmail.trim() || !formLocation.trim()) {
+      showNotice('error', 'Phone, email and location are required.');
+      return;
+    }
 
-  const [isStaffEditing, setIsStaffEditing] = useState(false);
-  const [staffEditingId, setStaffEditingId] = useState<string | null>(null);
-  const [staffFormId, setStaffFormId] = useState('');
-  const [staffFormName, setStaffFormName] = useState('');
-  const [staffFormPassword, setStaffFormPassword] = useState('');
-  const [staffFormRole, setStaffFormRole] = useState(STAFF_ROLES[0]);
-  const [staffFormIsActive, setStaffFormIsActive] = useState(true);
-  const [showStaffPassword, setShowStaffPassword] = useState(false);
+    const totalTime = Math.max(1, Number(formTotalTime) || DEFAULT_PLAN_DAYS);
 
-  const fetchStaffForPharmacy = async (name: string) => {
-    setIsStaffLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/staff-by-pharmacy/${encodeURIComponent(name)}`);
-      const resData = await response.json();
-      if (response.ok && resData.success) {
-        setPharmacyStaff(Array.isArray(resData.data) ? resData.data : []);
+      const response = await fetch(`${BACKEND_URL}/api/admin/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          RESTAURANTName: formRESTAURANTName,
+          id: formId,
+          password: formPassword,
+          phone: formPhone,
+          email: formEmail,
+          location: formLocation,
+          PanOrVat: formPanOrVat,
+          // Remaining time always starts equal to the total plan length on creation.
+          totalTime,
+          remainingTime: totalTime
+        })
+      });
+      const data = await readJsonSafe(response);
+
+      if (response.ok && data.success) {
+        showNotice('success', 'Successfully generated new secure account profile!');
+        if (data.data) {
+          setRestaurants(prev => [...prev, normalizeRestaurant(data.data)]);
+        }
+        resetForm();
       } else {
-        showNotice('error', resData.message || 'Could not load pharmacy staff.');
+        showNotice('error', getServerMessage(data, response, 'Validation matching check rejected.'));
       }
     } catch (err) {
-      showNotice('error', 'Could not load pharmacy staff.');
-    } finally {
-      setIsStaffLoading(false);
+      showNotice('error', 'Server offline during registration processing.');
     }
   };
 
-  const openPharmacyDetails = async (name: string) => {
-    setSelectedPharmacy(name);
-    resetStaffForm();
-    await fetchStaffForPharmacy(name);
+  // ✏️ UPDATE RESTAURANT LOGIN ACCOUNT (RESTAURANTUser)
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId) return;
+
+    const totalTime = Math.max(1, Number(formTotalTime) || DEFAULT_PLAN_DAYS);
+    const remainingTime = Math.max(0, Number(formRemainingTime) || 0);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/users/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          RESTAURANTName: formRESTAURANTName,
+          isActive: formIsActive,
+          password: formPassword || undefined,
+          phone: formPhone,
+          email: formEmail,
+          location: formLocation,
+          PanOrVat: formPanOrVat,
+          totalTime,
+          remainingTime
+        })
+      });
+      const data = await readJsonSafe(response);
+
+      if (response.ok && data.success) {
+        showNotice('success', 'Profile properties committed seamlessly.');
+        setRestaurants(prev => prev.map(item => item._id === editingId ? normalizeRestaurant({
+          ...item,
+          RESTAURANTName: formRESTAURANTName,
+          isActive: formIsActive,
+          phone: formPhone,
+          email: formEmail,
+          location: formLocation,
+          PanOrVat: formPanOrVat,
+          totalTime,
+          remainingTime
+        }) : item));
+        resetForm();
+      } else {
+        showNotice('error', getServerMessage(data, response, 'Refused to write database adjustments.'));
+      }
+    } catch (err) {
+      showNotice('error', 'Database connection handshake failure during save.');
+    }
   };
 
-  const closePharmacyDetails = () => {
-    setSelectedPharmacy(null);
-    setPharmacyStaff([]);
-    resetStaffForm();
+  // ❌ DELETE RESTAURANT LOGIN ACCOUNT (RESTAURANTUser)
+  const handleDeleteUser = async (id: string) => {
+    if (!window.confirm("Are you absolutely sure you want to permanently delete this system user profile? This cannot be undone.")) return;
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/users/${id}`, {
+        method: 'DELETE'
+      });
+      const data = await readJsonSafe(response);
+
+      if (response.ok && data.success) {
+        showNotice('success', 'Target entity wiped cleanly from collections.');
+        setRestaurants(prev => prev.filter(p => p._id !== id));
+        if (editingId === id) resetForm();
+      } else {
+        showNotice('error', getServerMessage(data, response, 'Deletion parameters denied.'));
+      }
+    } catch (err) {
+      showNotice('error', 'Network crash prevented data deletion.');
+    }
   };
+
+  // ⏱️ QUICK RENEW — adds N days to both total & remaining time without opening the form
+  const handleExtendTime = async (resto: RESTAURANTAccount, days: number) => {
+    const currentTotal = resto.totalTime ?? DEFAULT_PLAN_DAYS;
+    const currentRemaining = resto.remainingTime ?? currentTotal;
+    const newTotal = currentTotal + days;
+    const newRemaining = currentRemaining + days;
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/users/${resto._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totalTime: newTotal, remainingTime: newRemaining })
+      });
+      const data = await readJsonSafe(response);
+
+      if (response.ok && data.success) {
+        showNotice('success', `Added ${days} days to ${resto.RESTAURANTName || resto.restaurantName}.`);
+        setRestaurants(prev => prev.map(item =>
+          item._id === resto._id ? normalizeRestaurant({ ...item, totalTime: newTotal, remainingTime: newRemaining }) : item
+        ));
+      } else {
+        showNotice('error', getServerMessage(data, response, 'Could not extend the subscription.'));
+      }
+    } catch (err) {
+      showNotice('error', 'Network crash prevented the time extension.');
+    }
+  };
+
+  // ============================================================
+  // ADMIN ACCOUNT ALWAYS FIRST IN THE TABLE
+  // ============================================================
+  const isAdminAccount = (resto: RESTAURANTAccount): boolean => {
+    const loginId = String(resto?.id || '').trim().toLowerCase();
+    const currentAdminId = String(user?.id || '').trim().toLowerCase();
+    const role = String(resto?.role || '').trim().toLowerCase();
+
+    return (
+      resto?.isAdmin === true ||
+      role.includes('admin') ||
+      ADMIN_LOGIN_IDS.includes(loginId) ||
+      (!!user?._id && resto?._id === user._id) ||
+      (!!currentAdminId && loginId === currentAdminId)
+    );
+  };
+
+  const filteredRestaurants = Restaurants
+    .filter(resto => {
+      // Check both uppercase and lowercase variants sent from the backend
+      const name = String(resto?.RESTAURANTName || resto?.restaurantName || "").toLowerCase();
+      const id = String(resto?.id || "").toLowerCase();
+      const query = String(searchQuery || "").toLowerCase();
+      const matchesQuery = name.includes(query) || id.includes(query);
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && resto.isActive) ||
+        (statusFilter === 'inactive' && !resto.isActive);
+      return matchesQuery && matchesStatus;
+    })
+    // Admin first, everyone else keeps their original order (sort is stable)
+    .sort((a, b) => Number(isAdminAccount(b)) - Number(isAdminAccount(a)));
+
+  // ---------- Dashboard-wide stats (derived, no extra requests) ----------
+  const totalCount = Restaurants.length;
+  const activeCount = Restaurants.filter(r => r.isActive).length;
+  const inactiveCount = totalCount - activeCount;
+  const expiringCount = Restaurants.filter(r => {
+    const total = r.totalTime ?? DEFAULT_PLAN_DAYS;
+    const remaining = r.remainingTime ?? total;
+    return remaining <= Math.max(1, total * 0.2);
+  }).length;
+
+  // ============================================================
+  // STAFF MANAGEMENT (separate from RESTAURANT login accounts above)
+  // Wired to /api/staff endpoints -> RESTAURANTStaff collection only.
+  // Only loads when a specific RESTAURANT name is clicked, and only
+  // ever shows staff belonging to that one RESTAURANT.
+  // ============================================================
 
   const resetStaffForm = () => {
     setIsStaffEditing(false);
@@ -348,6 +514,61 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
     setShowStaffPassword(false);
   };
 
+  const fetchStaffForRESTAURANT = async (name: string) => {
+    setIsStaffLoading(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/staff-by-RESTAURANT/${encodeURIComponent(name)}`);
+      const resData = await readJsonSafe(response);
+
+      if (response.ok && resData.success !== false) {
+        // Accept: [ ... ]  or  { data: [ ... ] }  or  { staff: [ ... ] }
+        const list = Array.isArray(resData)
+          ? resData
+          : Array.isArray(resData.data)
+            ? resData.data
+            : Array.isArray(resData.staff)
+              ? resData.staff
+              : [];
+        setRESTAURANTStaff(list);
+      } else {
+        showNotice('error', getServerMessage(resData, response, 'Could not load RESTAURANT staff.'));
+      }
+    } catch (err) {
+      console.error('Load staff failed:', err);
+      showNotice('error', 'Could not load RESTAURANT staff.');
+    } finally {
+      setIsStaffLoading(false);
+    }
+  };
+
+  const openRESTAURANTDetails = async (name: string) => {
+    if (!name) {
+      showNotice('error', 'This account has no restaurant name.');
+      return;
+    }
+    setSelectedRESTAURANT(name);
+    setRESTAURANTStaff([]);
+    resetStaffForm();
+    await fetchStaffForRESTAURANT(name);
+  };
+
+  const closeRESTAURANTDetails = () => {
+    setSelectedRESTAURANT(null);
+    setRESTAURANTStaff([]);
+    resetStaffForm();
+  };
+
+  // Close the staff modal with Escape for a bit more polish/accessibility.
+  useEffect(() => {
+    if (!selectedRESTAURANT) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRESTAURANTDetails();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRESTAURANT]);
+
   const startStaffEditMode = (staff: StaffAccount) => {
     setIsStaffEditing(true);
     setStaffEditingId(staff._id);
@@ -358,64 +579,83 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
     setStaffFormPassword('');
   };
 
-  // ➕ CREATE NEW STAFF LOGIN ACCOUNT (PharmacyStaff)
-const handleCreateStaff = async (e: React.FormEvent) => {
-  e.preventDefault();
+  // ➕ CREATE NEW STAFF LOGIN ACCOUNT (RESTAURANTStaff)
+  const handleCreateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isStaffSaving) return;
 
-  // --- ADD THIS VALIDATION ---
-  if (!staffFormId.trim() || !staffFormPassword.trim() || !staffFormName.trim()) {
-    showNotice('error', 'Please fill in all required fields (Name, ID and Password).');
-    return; // Stops the function here so no request is sent
-  }
-  // ---------------------------
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/staff/create`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer mock-jwt-token' 
-      },
-      body: JSON.stringify({
-        pharmacyName: selectedPharmacy,
-        staffName: staffFormName,
-        id: staffFormId,
-        password: staffFormPassword,
-        role: staffFormRole,
-        isActive: staffFormIsActive
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      showNotice('success', 'Staff account created.');
-      resetStaffForm(); // Clears form after success
-      await fetchStaffForPharmacy(selectedPharmacy); 
-    } else {
-      showNotice('error', data.message || 'Failed to create account.');
+    const restaurantName = selectedRESTAURANT;
+    if (!restaurantName) {
+      showNotice('error', 'No restaurant selected.');
+      return;
     }
-  } catch (err) {
-    showNotice('error', 'Server offline.');
-  }
-};
-  // ✏️ UPDATE STAFF LOGIN ACCOUNT (PharmacyStaff)
+
+    const cleanName = staffFormName.trim();
+    const cleanId = staffFormId.trim();
+
+    if (!cleanName || !cleanId || !staffFormPassword.trim()) {
+      showNotice('error', 'Please fill in all required fields (Name, ID and Password).');
+      return;
+    }
+
+    setIsStaffSaving(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/staff/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
+        },
+        body: JSON.stringify({
+          restaurantName: restaurantName,
+          RESTAURANTName: restaurantName,
+          name: cleanName,
+          staffName: cleanName,
+          id: cleanId,
+          password: staffFormPassword,
+          role: staffFormRole,
+          isActive: staffFormIsActive
+        })
+      });
+      const data = await readJsonSafe(response);
+
+      if (response.ok && data.success !== false) {
+        showNotice('success', 'Staff account created.');
+        resetStaffForm();
+        await fetchStaffForRESTAURANT(restaurantName);
+      } else {
+        showNotice('error', getServerMessage(data, response, 'Failed to create staff account'));
+      }
+    } catch (err) {
+      console.error('Create staff failed:', err);
+      showNotice('error', 'Could not reach the server. Check that the backend is running.');
+    } finally {
+      setIsStaffSaving(false);
+    }
+  };
+
+  // ✏️ UPDATE STAFF LOGIN ACCOUNT (RESTAURANTStaff)
   const handleUpdateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!staffEditingId || !selectedPharmacy) return;
+    if (isStaffSaving) return;
 
-    if (!staffFormId.trim()) {
+    const restaurantName = selectedRESTAURANT;
+    if (!staffEditingId || !restaurantName) return;
+
+    const cleanId = staffFormId.trim();
+    if (!cleanId) {
       showNotice('error', 'Staff ID is required.');
       return;
     }
 
+    setIsStaffSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        id: staffFormId,
-        staffName: staffFormName,
+        id: cleanId,
+        staffName: staffFormName.trim(),
         role: staffFormRole,
         isActive: staffFormIsActive,
-        pharmacyName: selectedPharmacy
+        RESTAURANTName: restaurantName
       };
       if (staffFormPassword.trim()) {
         payload.password = staffFormPassword;
@@ -423,62 +663,73 @@ const handleCreateStaff = async (e: React.FormEvent) => {
 
       const response = await fetch(`${BACKEND_URL}/api/staff/${staffEditingId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
+        },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+      const data = await readJsonSafe(response);
 
-      if (response.ok) {
+      if (response.ok && data.success !== false) {
         showNotice('success', 'Staff account updated.');
-        await fetchStaffForPharmacy(selectedPharmacy);
+        await fetchStaffForRESTAURANT(restaurantName);
         resetStaffForm();
       } else {
-        showNotice('error', data.error || 'Failed to update staff account.');
+        showNotice('error', getServerMessage(data, response, 'Failed to update staff account'));
       }
     } catch (err) {
-      showNotice('error', 'Database connection handshake failure during save.');
+      console.error('Update staff failed:', err);
+      showNotice('error', 'Could not reach the server. Check that the backend is running.');
+    } finally {
+      setIsStaffSaving(false);
     }
   };
 
-  // ❌ DELETE STAFF LOGIN ACCOUNT (PharmacyStaff)
+  // ❌ DELETE STAFF LOGIN ACCOUNT (RESTAURANTStaff)
   const handleDeleteStaff = async (id: string) => {
-    if (!selectedPharmacy) return;
+    if (!selectedRESTAURANT) return;
     if (!window.confirm("Delete this staff member permanently? This cannot be undone.")) return;
 
     try {
       const response = await fetch(`${BACKEND_URL}/api/staff/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { ...getAuthHeader() }
       });
-      const data = await response.json();
+      const data = await readJsonSafe(response);
 
-      if (response.ok) {
+      if (response.ok && data.success !== false) {
         showNotice('success', 'Staff member deleted.');
-        setPharmacyStaff(prev => prev.filter(s => s._id !== id));
+        setRESTAURANTStaff(prev => prev.filter(s => s._id !== id));
         if (staffEditingId === id) resetStaffForm();
       } else {
-        showNotice('error', data.error || 'Failed to delete staff member.');
+        showNotice('error', getServerMessage(data, response, 'Failed to delete staff member'));
       }
     } catch (err) {
+      console.error('Delete staff failed:', err);
       showNotice('error', 'Network crash prevented staff deletion.');
     }
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans">
-      
+
       {/* Upper Navigation Canopy */}
       <nav className="bg-white border-b border-slate-200/80 sticky top-0 z-50 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-600/20">
+          <div className="h-11 w-11 bg-linear-to-br from-purple-600 to-fuchsia-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-600/20">
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
             <h1 className="text-xl font-extrabold tracking-tight text-slate-900">{t?.dashTitle || "Admin Dashboard"}</h1>
-            <p className="text-xs text-slate-500 font-medium">{t.welcome} <span className="text-purple-600 font-bold">{user.pharmacyName}</span></p>
+            <p className="text-xs text-slate-500 font-medium">{t.welcome} <span className="text-purple-600 font-bold">{user.RESTAURANTName || user.restaurantName}</span></p>
           </div>
         </div>
 
-        <button 
+        <button
           onClick={onLogout}
           className="flex items-center gap-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold uppercase tracking-wider rounded-xl transition-all border border-rose-100 cursor-pointer"
         >
@@ -488,300 +739,447 @@ const handleCreateStaff = async (e: React.FormEvent) => {
       </nav>
 
       {/* Main Operations Canvas */}
-      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Dynamic Notification Toast */}
-        {notification && (
-          <div className={`fixed bottom-5 right-5 z-50 p-4 rounded-2xl shadow-2xl border flex items-center gap-3 max-w-md transition-all duration-300 text-sm font-semibold text-white ${
-            notification.type === 'success' ? 'bg-emerald-600 border-emerald-500' : 'bg-rose-600 border-rose-500'
-          }`}>
-            <Activity className="h-5 w-5 shrink-0 animate-pulse" />
-            <p>{notification.msg}</p>
-          </div>
-        )}
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
 
-        {/* Column 1 & 2: Pharmacy Login Account Directory */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-3xl border border-slate-200/60 shadow-xs p-6 space-y-5">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-purple-600" /> System Registries
-              </h2>
-              <button 
-                onClick={fetchAllPharmacies}
-                className="p-2 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer text-slate-500 hover:text-purple-600"
-                title="Refresh Database Connection"
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-purple-600' : ''}`} />
-              </button>
+        {/* Overview stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`text-left bg-white rounded-2xl border p-5 shadow-xs transition-all cursor-pointer hover:-translate-y-0.5 ${
+              statusFilter === 'all' ? 'border-purple-300 ring-2 ring-purple-500/10' : 'border-slate-200/60'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.statTotal}</span>
+              <Building2 className="h-4 w-4 text-purple-500" />
             </div>
+            <p className="text-2xl font-extrabold text-slate-900 mt-2">{totalCount}</p>
+          </button>
 
-            {/* Live Search Engine */}
-            <div className="relative">
-              <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-400" />
-              <input 
-                type="text"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 transition-all placeholder-slate-400 font-medium"
-              />
+          <button
+            type="button"
+            onClick={() => setStatusFilter('active')}
+            className={`text-left bg-white rounded-2xl border p-5 shadow-xs transition-all cursor-pointer hover:-translate-y-0.5 ${
+              statusFilter === 'active' ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-slate-200/60'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.statActive}</span>
+              <CheckCircle className="h-4 w-4 text-emerald-500" />
             </div>
+            <p className="text-2xl font-extrabold text-slate-900 mt-2">{activeCount}</p>
+          </button>
 
-            {/* Core CRUD Table Layout — clicking pharmacy name opens ONLY that pharmacy's staff */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-200/60">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="p-4">{t.tableName}</th>
-                    <th className="p-4">{t.tableId}</th>
-                    <th className="p-4">{t.tableLocation}</th>
-                    <th className="p-4">{t.tableStatus}</th>
-                    <th className="p-4 text-right">{t.tableAction}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {filteredPharmacies.length > 0 ? (
-                    filteredPharmacies.map((pharm) => (
-                      <tr key={pharm._id} className="hover:bg-slate-50/60 transition-colors">
-                        <td 
-                          className="p-4 font-bold text-slate-900 text-sm cursor-pointer hover:text-purple-600 underline"
-                          onClick={() => openPharmacyDetails(pharm.pharmacyName)}
-                        >
-                          {pharm.pharmacyName}
-                        </td>
-                        <td className="p-4 font-mono text-slate-500 font-semibold">{pharm.id}</td>
-                        <td className="p-4 text-slate-600 font-medium">
-                          <span className="inline-flex items-center gap-1.5">
-                            <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                            {pharm.location || '—'}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            pharm.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
-                          }`}>
-                            {pharm.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                            {pharm.isActive ? t.active : t.inactive}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right space-x-2 whitespace-nowrap">
-                          <button 
-                            onClick={() => startEditMode(pharm)}
-                            className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteUser(pharm._id)}
-                            className="p-2 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="p-10 text-center text-slate-400 font-medium bg-slate-50/30">
-                        No active matching user configurations found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('inactive')}
+            className={`text-left bg-white rounded-2xl border p-5 shadow-xs transition-all cursor-pointer hover:-translate-y-0.5 ${
+              statusFilter === 'inactive' ? 'border-rose-300 ring-2 ring-rose-500/10' : 'border-slate-200/60'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.statInactive}</span>
+              <XCircle className="h-4 w-4 text-rose-500" />
             </div>
+            <p className="text-2xl font-extrabold text-slate-900 mt-2">{inactiveCount}</p>
+          </button>
+
+          <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.statExpiring}</span>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+            </div>
+            <p className="text-2xl font-extrabold text-slate-900 mt-2">{expiringCount}</p>
           </div>
         </div>
 
-        {/* Column 3: Pharmacy Login Account Mutator Box */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-3xl border border-slate-200/60 shadow-xs p-6 space-y-5 sticky top-24">
-            <div>
-              <div className="h-9 w-9 bg-purple-50 text-purple-700 rounded-xl flex items-center justify-center mb-3">
-                {isEditing ? <Edit3 className="h-4.5 w-4.5" /> : <Plus className="h-5 w-5" />}
-              </div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                {isEditing ? t.editHeading : t.createHeading}
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">Configure access accounts directly into MongoDB environment parameters.</p>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-            <form onSubmit={isEditing ? handleUpdateUser : handleCreateUser} className="space-y-4">
-              
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Restaurant Store Name</label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    required
-                    placeholder="e.g. Everest Kitchen"
-                    value={formPharmacyName}
-                    onChange={(e) => setFormPharmacyName(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Login Access ID</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    required
-                    disabled={isEditing}
-                    placeholder="Alphanumeric code string"
-                    value={formId}
-                    onChange={(e) => setFormId(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-mono font-medium disabled:bg-slate-100 disabled:text-slate-400"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  {isEditing ? "New Security Password (Optional)" : "Security Password"}
-                </label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type={showPassword ? "text" : "password"}
-                    required={!isEditing}
-                    placeholder={isEditing ? "•••••••• (Preserve current)" : "Minimum 6 credentials"}
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Phone / Email / Location / PAN-VAT — always in the form (create + edit),
-                  but only VISIBLE in the table for edit mode users clicking Edit.
-                  These fields appear in both create and edit modes here since the
-                  edit panel IS this same form. */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone Number</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    required
-                    placeholder="e.g. 98XXXXXXXX"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="email"
-                    required
-                    placeholder="e.g. Restaurant@example.com"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    required
-                    placeholder="e.g. Kathmandu, Nepal"
-                    value={formLocation}
-                    onChange={(e) => setFormLocation(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PAN / VAT Number</label>
-                <div className="relative">
-                  <FileText className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    placeholder="e.g. 600123456"
-                    value={formPanOrVat}
-                    onChange={(e) => setFormPanOrVat(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
-                  />
-                </div>
-              </div>
-
-              {isEditing && (
-                <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 select-none">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-700 block">Account Token Node</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Allow system queries access</span>
-                  </div>
-                  <input 
-                    type="checkbox"
-                    id="isActiveToggle"
-                    checked={formIsActive}
-                    onChange={(e) => setFormIsActive(e.target.checked)}
-                    className="w-4 h-4 rounded-md border-slate-300 text-purple-600 focus:ring-purple-500/20 h-5 w-5 accent-purple-600 cursor-pointer"
-                  />
-                </div>
-              )}
-
-              <div className="space-y-2 pt-2">
+          {/* Column 1 & 2: RESTAURANT Login Account Directory */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-xs p-6 space-y-5">
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-purple-600" /> System Registries
+                </h2>
                 <button
-                  type="submit"
-                  className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-purple-600/10 hover:shadow-lg hover:shadow-purple-600/20 active:scale-[0.99] cursor-pointer"
+                  onClick={fetchAllRestaurants}
+                  className="p-2 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer text-slate-500 hover:text-purple-600"
+                  title="Refresh Database Connection"
                 >
-                  {isEditing ? t.submitUpdate : t.submitCreate}
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-purple-600' : ''}`} />
                 </button>
+              </div>
+
+              {/* Live Search Engine */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={t.searchPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 transition-all placeholder-slate-400 font-medium"
+                />
+              </div>
+
+              {/* Core CRUD Table Layout — clicking RESTAURANT name opens ONLY that RESTAURANT's staff */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/60">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 font-bold uppercase tracking-wider">
+                      <th className="p-4">{t.tableName}</th>
+                      <th className="p-4">{t.tableId}</th>
+                      <th className="p-4">{t.tableLocation}</th>
+                      <th className="p-4">{t.tableTime}</th>
+                      <th className="p-4">{t.tableStatus}</th>
+                      <th className="p-4 text-right">{t.tableAction}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {filteredRestaurants.length > 0 ? (
+                      filteredRestaurants.map((resto) => {
+                        const isAdminRow = isAdminAccount(resto);
+                        const restoName = resto.RESTAURANTName || resto.restaurantName || '';
+                        const total = resto.totalTime ?? DEFAULT_PLAN_DAYS;
+                        const remaining = resto.remainingTime ?? total;
+                        const timeStatus = getTimeStatus(remaining, total);
+
+                        return (
+                          <tr
+                            key={resto._id}
+                            className={`transition-colors ${
+                              isAdminRow ? 'bg-purple-50/60 hover:bg-purple-50' : 'hover:bg-slate-50/60'
+                            }`}
+                          >
+                            <td className="p-4">
+                              <button
+                                type="button"
+                                onClick={() => openRESTAURANTDetails(restoName)}
+                                className="flex items-center gap-2.5 group cursor-pointer text-left"
+                              >
+                                <span className="h-8 w-8 shrink-0 rounded-full bg-linear-to-br from-purple-500 to-fuchsia-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                                  {getInitials(restoName)}
+                                </span>
+                                <span className="font-bold text-slate-900 text-sm group-hover:text-purple-600 group-hover:underline">
+                                  {restoName || 'Unnamed Store'}
+                                </span>
+                                {isAdminRow && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[9px] font-bold uppercase tracking-wider align-middle">
+                                    <ShieldCheck className="h-3 w-3" />
+                                    {t.adminBadge}
+                                  </span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="p-4 font-mono text-slate-500 font-semibold">{resto.id}</td>
+                            <td className="p-4 text-slate-600 font-medium">
+                              <span className="inline-flex items-center gap-1.5">
+                                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                {resto.location || '—'}
+                              </span>
+                            </td>
+                            <td className="p-4 min-w-[150px]">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`text-[10px] font-bold ${timeStatus.text}`}>
+                                  {Math.max(0, remaining)} / {total} days
+                                </span>
+                                {!isAdminRow && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExtendTime(resto, 30)}
+                                    title="Extend by 30 days"
+                                    className="p-1 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition-colors cursor-pointer"
+                                  >
+                                    <TimerReset className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${timeStatus.bar} transition-all`}
+                                  style={{ width: `${timeStatus.pct}%` }}
+                                />
+                              </div>
+                              {timeStatus.label !== 'Healthy' && (
+                                <span className={`inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider ${timeStatus.text}`}>
+                                  <AlertTriangle className="h-2.5 w-2.5" />
+                                  {timeStatus.label}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                resto.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+                              }`}>
+                                {resto.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                                {resto.isActive ? t.active : t.inactive}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right space-x-2 whitespace-nowrap">
+                              <button
+                                onClick={() => startEditMode(resto)}
+                                className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(resto._id)}
+                                className="p-2 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="p-10 text-center text-slate-400 font-medium bg-slate-50/30">
+                          No active matching user configurations found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 3: RESTAURANT Login Account Mutator Box */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-xs p-6 space-y-5 sticky top-24">
+              <div>
+                <div className="h-9 w-9 bg-purple-50 text-purple-700 rounded-xl flex items-center justify-center mb-3">
+                  {isEditing ? <Edit3 className="h-4.5 w-4.5" /> : <Plus className="h-5 w-5" />}
+                </div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  {isEditing ? t.editHeading : t.createHeading}
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Configure access accounts directly into MongoDB environment parameters.</p>
+              </div>
+
+              <form onSubmit={isEditing ? handleUpdateUser : handleCreateUser} className="space-y-4">
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Restaurant Store Name</label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Everest Kitchen"
+                      value={formRESTAURANTName}
+                      onChange={(e) => setFormRESTAURANTName(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Login Access ID</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      disabled={isEditing}
+                      placeholder="Alphanumeric code string"
+                      value={formId}
+                      onChange={(e) => setFormId(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-mono font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {isEditing ? "New Security Password (Optional)" : "Security Password"}
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required={!isEditing}
+                      autoComplete="new-password"
+                      placeholder={isEditing ? "•••••••• (Preserve current)" : "Minimum 8 credentials"}
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 98XXXXXXXX"
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. Restaurant@example.com"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Kathmandu, Nepal"
+                      value={formLocation}
+                      onChange={(e) => setFormLocation(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PAN / VAT Number</label>
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="e.g. 600123456"
+                      value={formPanOrVat}
+                      onChange={(e) => setFormPanOrVat(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Subscription length — remaining time mirrors this on creation, and can
+                    be adjusted independently once the account exists. */}
+                <div className={`grid ${isEditing ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Total Plan (Days)
+                    </label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        placeholder="30"
+                        value={formTotalTime}
+                        onChange={(e) => {
+                          setFormTotalTime(e.target.value);
+                          if (!isEditing) setFormRemainingTime(e.target.value);
+                        }}
+                        className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {isEditing && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Remaining (Days)
+                      </label>
+                      <div className="relative">
+                        <TimerReset className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                        <input
+                          type="number"
+                          min={0}
+                          required
+                          placeholder="30"
+                          value={formRemainingTime}
+                          onChange={(e) => setFormRemainingTime(e.target.value)}
+                          className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {!isEditing && (
+                  <p className="text-[10px] text-slate-400 -mt-2 px-0.5">Remaining days start out equal to the total plan length.</p>
+                )}
 
                 {isEditing && (
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition-all text-center cursor-pointer"
-                  >
-                    {t.cancelBtn}
-                  </button>
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 select-none">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-700 block">Account Token Node</span>
+                      <span className="text-[10px] text-slate-400 font-medium">Allow system queries access</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="rounded-md border-slate-300 text-purple-600 focus:ring-purple-500/20 h-5 w-5 accent-purple-600 cursor-pointer"
+                    />
+                  </div>
                 )}
-              </div>
-            </form>
+
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-purple-600/10 hover:shadow-lg hover:shadow-purple-600/20 active:scale-[0.99] cursor-pointer"
+                  >
+                    {isEditing ? t.submitUpdate : t.submitCreate}
+                  </button>
+
+                  {isEditing && (
+                    <button
+                      type="button"
+                      onClick={resetForm}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition-all text-center cursor-pointer"
+                    >
+                      {t.cancelBtn}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </main>
 
-      {/* ============================================================ */}
-      {/* FULL-SCREEN STAFF MANAGEMENT OVERLAY (PharmacyStaff collection) */}
-      {/* Only staff for the clicked pharmacy are ever loaded/shown.     */}
-      {/* ============================================================ */}
-      {selectedPharmacy && (
+      {/* ============================================================
+          FULL-SCREEN MODAL / OVERLAY FOR MANAGING STAFF OF SELECTED RESTAURANT
+          ============================================================ */}
+      {selectedRESTAURANT && (
         <div className="fixed inset-0 z-[100] bg-slate-50 overflow-y-auto">
           <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-6">
 
             {/* Header with X close */}
             <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">{selectedPharmacy} — Staff Management</h2>
+                <h2 className="text-2xl font-bold text-slate-900">{selectedRESTAURANT} — Staff Management</h2>
                 <p className="text-slate-500 text-sm mt-1">Add, edit, or remove personnel credentials for this Restaurant.</p>
               </div>
               <button
-                onClick={closePharmacyDetails}
+                type="button"
+                onClick={closeRESTAURANTDetails}
                 className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
                 title="Close"
               >
@@ -791,14 +1189,15 @@ const handleCreateStaff = async (e: React.FormEvent) => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-              {/* List of Staff for this pharmacy only */}
+              {/* List of Staff for this RESTAURANT only */}
               <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <User className="h-4 w-4 text-purple-600" /> Staff Directory
+                    <Users className="h-4 w-4 text-purple-600" /> Staff Directory
                   </h3>
                   <button
-                    onClick={() => fetchStaffForPharmacy(selectedPharmacy)}
+                    type="button"
+                    onClick={() => fetchStaffForRESTAURANT(selectedRESTAURANT)}
                     className="p-2 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer text-slate-500 hover:text-purple-600"
                     title="Refresh"
                   >
@@ -818,8 +1217,8 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {pharmacyStaff.length > 0 ? (
-                        pharmacyStaff.map((staff) => (
+                      {RESTAURANTStaff.length > 0 ? (
+                        RESTAURANTStaff.map((staff) => (
                           <tr key={staff._id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="p-3 font-bold text-slate-900">{staff.staffName || '—'}</td>
                             <td className="p-3 font-mono text-slate-500 font-semibold">{staff.id}</td>
@@ -834,12 +1233,14 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                             </td>
                             <td className="p-3 text-right space-x-2 whitespace-nowrap">
                               <button
+                                type="button"
                                 onClick={() => startStaffEditMode(staff)}
                                 className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleDeleteStaff(staff._id)}
                                 className="p-2 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
                               >
@@ -851,7 +1252,7 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                       ) : (
                         <tr>
                           <td colSpan={5} className="p-10 text-center text-slate-400 font-medium bg-slate-50/30">
-                            No staff members found for this Restaurant.
+                            {isStaffLoading ? 'Loading staff...' : 'No staff members found for this Restaurant.'}
                           </td>
                         </tr>
                       )}
@@ -870,11 +1271,11 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                     {isStaffEditing ? 'Edit Staff Member' : 'Add Staff Member'}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Restaurant: <span className="font-semibold text-slate-600">{selectedPharmacy}</span>
+                    Restaurant: <span className="font-semibold text-slate-600">{selectedRESTAURANT}</span>
                   </p>
                 </div>
 
-               <form onSubmit={isStaffEditing ? handleUpdateStaff : handleCreateStaff} className="space-y-4">
+                <form onSubmit={isStaffEditing ? handleUpdateStaff : handleCreateStaff} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Staff Name</label>
                     <div className="relative">
@@ -914,7 +1315,8 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                       <input
                         type={showStaffPassword ? "text" : "password"}
                         required={!isStaffEditing}
-                        placeholder={isStaffEditing ? "•••••••• (Preserve current)" : "Minimum 6 credentials"}
+                        autoComplete="new-password"
+                        placeholder={isStaffEditing ? "•••••••• (Preserve current)" : "Minimum 8 credentials"}
                         value={staffFormPassword}
                         onChange={(e) => setStaffFormPassword(e.target.value)}
                         className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:border-purple-500 transition-all font-medium"
@@ -951,17 +1353,18 @@ const handleCreateStaff = async (e: React.FormEvent) => {
                       type="checkbox"
                       checked={staffFormIsActive}
                       onChange={(e) => setStaffFormIsActive(e.target.checked)}
-                      className="w-4 h-4 rounded-md border-slate-300 text-purple-600 focus:ring-purple-500/20 h-5 w-5 accent-purple-600 cursor-pointer"
+                      className="rounded-md border-slate-300 text-purple-600 focus:ring-purple-500/20 h-5 w-5 accent-purple-600 cursor-pointer"
                     />
                   </div>
 
                   <div className="space-y-2 pt-2">
+                    {/* One normal submit button -> form onSubmit handles create / update */}
                     <button
-                      type="button"
-                       onClick={isStaffEditing ? handleUpdateStaff : handleCreateStaff}
-                        className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-purple-600/10 hover:shadow-lg hover:shadow-purple-600/20 active:scale-[0.99] cursor-pointer"
->
-                          {isStaffEditing ? 'Save Changes' : 'Create Staff Account'}
+                      type="submit"
+                      disabled={isStaffSaving}
+                      className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-purple-600/10 hover:shadow-lg hover:shadow-purple-600/20 active:scale-[0.99] cursor-pointer"
+                    >
+                      {isStaffSaving ? 'Saving...' : isStaffEditing ? 'Save Changes' : 'Create Staff Account'}
                     </button>
 
                     {isStaffEditing && (
@@ -978,6 +1381,16 @@ const handleCreateStaff = async (e: React.FormEvent) => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast message — rendered LAST with a higher z-index so it shows ABOVE the staff screen */}
+      {notification && (
+        <div className={`fixed bottom-5 right-5 z-[200] p-4 rounded-2xl shadow-2xl border flex items-center gap-3 max-w-md transition-all duration-300 text-sm font-semibold text-white ${
+          notification.type === 'success' ? 'bg-emerald-600 border-emerald-500' : 'bg-rose-600 border-rose-500'
+        }`}>
+          <Activity className="h-5 w-5 shrink-0 animate-pulse" />
+          <p>{notification.msg}</p>
         </div>
       )}
 
