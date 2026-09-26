@@ -771,7 +771,7 @@ const TotalOrder: React.FC<TotalOrderProps> = ({ restaurantId }) => {
       <style>{`
         @keyframes fade-in {
           from { opacity: 0; }
-          to { opacity: 1; }
+             to { opacity: 1; }
         }
         .animate-fade-in {
           animation: fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
