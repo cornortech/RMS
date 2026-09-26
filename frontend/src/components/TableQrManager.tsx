@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { QrCode, Download, Printer, RefreshCw, ExternalLink, Copy, Check, Loader2, AlertCircle } from 'lucide-react';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
 interface TableQr {
   tableId: string;

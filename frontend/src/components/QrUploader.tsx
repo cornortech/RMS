@@ -12,7 +12,7 @@ import {
   X 
 } from 'lucide-react';
 
-const API = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api`;
+const API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 const PROVIDERS = ['Fonepay', 'eSewa', 'Khalti', 'IME Pay'];
 
 interface QrConfig {

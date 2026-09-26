@@ -27,7 +27,7 @@ import RESTAURANTSettings from './components/Setting';
 import OrdersPage from './components/Orders';
    import Notifications from './components/Notifications';
 
-const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api`;
+const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
 type Lang = 'en' | 'ne';
 

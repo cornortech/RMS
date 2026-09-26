@@ -83,7 +83,7 @@ const FALLBACK_ROLE_STYLE = {
 const getRoleStyle = (role: string) => ROLE_STYLES[role] || FALLBACK_ROLE_STYLE;
 
 // Move this to an env var when you deploy: import.meta.env.VITE_API_URL
-const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api`;
+const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
 const api = axios.create({ baseURL: API_BASE_URL });
 api.interceptors.request.use((config) => {

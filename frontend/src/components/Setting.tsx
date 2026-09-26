@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import QrUploader from "./QrUploader";
 import TableQrManager from "./TableQrManager";
 
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com").trim().replace(/\/+$/, '');
 
 const TABS = [
   { key: "details", label: "Our Details", icon: "🏢" },

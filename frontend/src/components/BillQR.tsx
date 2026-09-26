@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, QrCode, RefreshCw, AlertTriangle } from 'lucide-react';
 
-const API = `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api`;
+const API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
 /** Wallet ids used by CreateBill's payment methods */
 export type WalletId = 'eSewa' | 'Khalti' | 'IMEPay';

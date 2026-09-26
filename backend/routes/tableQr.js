@@ -14,7 +14,7 @@ const router = express.Router();
 // Set PUBLIC_APP_URL in backend/.env, e.g. https://myrms.com or http://192.168.1.5:3000
 const getAppUrl = () => {
   const fromEnv = (process.env.PUBLIC_APP_URL || "").trim();
-  const fallback = (process.env.ALLOWED_ORIGINS || "http://localhost:3000").split(",")[0].trim();
+  const fallback = (process.env.ALLOWED_ORIGINS || "rms-seven-neon.vercel.app").split(",")[0].trim();
   return (fromEnv || fallback).replace(/\/+$/, "");
 };
 

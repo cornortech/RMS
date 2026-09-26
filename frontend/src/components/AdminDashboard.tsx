@@ -186,7 +186,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
   const [staffFormIsActive, setStaffFormIsActive] = useState(true);
   const [showStaffPassword, setShowStaffPassword] = useState(false);
 
-  const BACKEND_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+  const BACKEND_URL = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
   const t = {
     en: {

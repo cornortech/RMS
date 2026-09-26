@@ -5,7 +5,7 @@ import { UtensilsCrossed, BellRing, ArrowLeft, Search, Loader2, CheckCircle2, Al
 // URL looks like:  /scan/<restaurantKey>/<tableId>
 // No login is needed. The backend checks that the table belongs to the restaurant.
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
 interface MenuItem {
   _id: string;

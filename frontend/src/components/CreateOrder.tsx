@@ -27,7 +27,7 @@ import {
 // CONFIG
 // ==========================================
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 const MENU_URL = `${API_BASE}/api/menu`;
 const ORDERS_URL = `${API_BASE}/api/orders`;
 const TABLES_URL = `${API_BASE}/api/tables`;

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLang } from '../i18n';
 
 const getApiBase = (): string => {
-  const url = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const url = import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com";
   return url.trim().replace(/\/+$/, "") + "/api/tables";
 };
 

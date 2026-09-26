@@ -5,7 +5,7 @@ import './index.css';
 import { LanguageProvider } from './i18n';
 import CustomerMenu from './components/CustomerMenu';
 
-const API_ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_ROOT = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {

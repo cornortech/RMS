@@ -30,7 +30,7 @@ import { TRANSLATIONS } from '../translations';
 // CONFIG
 // ==========================================
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 const MENU_URL = `${API_BASE}/api/menu`;
 
 const COMBO = 'Combo';

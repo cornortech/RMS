@@ -66,7 +66,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
     setIsLoading(true);
 
     try {
-     const response = await fetch(`${(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')}/api/auth/login`,  {
+     const response = await fetch(`${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api/auth/login`,  {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

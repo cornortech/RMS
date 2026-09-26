@@ -34,7 +34,7 @@ import { Customer, Sale } from '../types';
 // CONFIG
 // ==========================================
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 const BILLS_URL = `${API_BASE}/api/bills`;
 const ORDERS_URL = `${API_BASE}/api/orders`;
 const TIME_URL = `${API_BASE}/api/restaurant/time`;

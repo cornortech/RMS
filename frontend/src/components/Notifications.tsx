@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BellRing, CheckCheck, Check, Trash2, Volume2, VolumeX, Loader2, Inbox } from 'lucide-react';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 const REFRESH_EVERY_MS = 5000; // check for new calls every 5 seconds
 
 interface WaiterCall {

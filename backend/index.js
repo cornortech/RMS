@@ -29,7 +29,7 @@ app.disable("x-powered-by");
 app.use(helmet());
 
 // Only these websites may call the API from a browser (set ALLOWED_ORIGINS in .env).
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000,http://localhost:5173")
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "rms-seven-neon.vercel.app,http://localhost:5173")
     .split(",").map((o) => o.trim()).filter(Boolean);
 
 app.use(cors({
@@ -262,7 +262,7 @@ guard("/api/stocks", { POST: [M, K, C], PUT: [M, K, C], DELETE: [M] });
 
 
 app.use("/api/loyalty", requireAuth, loyaltyRoutes);
-app.use("/api/qr", require("./routes/qr"));
+app.use('/api/qr', requireAuth, require('./routes/qr'));
 
 app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
