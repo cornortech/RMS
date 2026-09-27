@@ -3,6 +3,9 @@ import { QrCode, Download, Printer, RefreshCw, ExternalLink, Copy, Check, Loader
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
+// Branding text shown on every table QR card (screen, download and print)
+const BRAND_TEXT = 'By Atithi RMS of CornorTech';
+
 interface TableQr {
   tableId: string;
   tableName: string;
@@ -48,6 +51,12 @@ function buildCardImage(restaurantName: string, t: TableQr): Promise<string> {
       ctx.fillStyle = '#94a3b8';
       ctx.font = '18px Arial, sans-serif';
       ctx.fillText('Point your phone camera at the code', W / 2, 700);
+
+
+      // Branding line at the bottom of every QR card
+      ctx.fillStyle = '#7c3aed';
+      ctx.font = 'bold 20px Arial, sans-serif';
+      ctx.fillText(BRAND_TEXT, W / 2, 735);
 
       resolve(canvas.toDataURL('image/png'));
     };
@@ -181,7 +190,8 @@ export default function TableQrManager() {
             <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">{restaurantName}</p>
             <img src={t.qrImage} alt={`QR for ${t.tableName}`} className="my-2 h-44 w-44" />
             <p className="text-lg font-bold text-slate-900">{t.tableName}</p>
-            <p className="mb-3 text-xs text-slate-500">{t.capacity} seats</p>
+                        <p className="text-xs text-slate-500">{t.capacity} seats</p>
+            <p className="mb-3 mt-1 text-[11px] font-semibold text-purple-600">{BRAND_TEXT}</p>
 
             <div className="flex w-full gap-2">
               <button
