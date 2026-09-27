@@ -25,6 +25,8 @@ import AdminDashboard from './components/AdminDashboard';
 import StaffManager from './components/StaffManager';
 import RESTAURANTSettings from './components/Setting';
 import OrdersPage from './components/Orders';
+import OfflineBanner from './offline/OfflineBanner';
+import { hasUnsyncedChanges } from './offline/offlineFetch';
    import Notifications from './components/Notifications';
 
 const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
@@ -941,6 +943,7 @@ const { lang, setLang } = useLang();
 
         if (response.ok && data.success) {
           const targetUser = data.user || data.data?.user || data.data || data;
+                    localStorage.setItem('offlineSessionUser', JSON.stringify(targetUser)); // 📴 used when offline
 
           const isAdminUser = !!(
             targetUser?.isAdmin === true ||
@@ -960,9 +963,21 @@ const { lang, setLang } = useLang();
           localStorage.removeItem('authToken');
           setAuthState({ isAuthenticated: false, isAdmin: false });
         }
-      } catch (err) {
-        localStorage.removeItem('authToken');
-        setAuthState({ isAuthenticated: false, isAdmin: false });
+            } catch (err) {
+        // 📴 No internet → stay logged in with the last saved session
+        const saved = localStorage.getItem('offlineSessionUser');
+        if (saved) {
+          const targetUser = JSON.parse(saved);
+          setCurrentUserPayload({
+            _id: targetUser?._id || targetUser?.id || 'user-id',
+            id: targetUser?.id || targetUser?._id || 'user-id',
+            RESTAURANTName: targetUser?.RESTAURANTName || targetUser?.restaurantName || 'Restaurant Workspace',
+          });
+          setAuthState({ isAuthenticated: true, isAdmin: targetUser?.isAdmin === true });
+        } else {
+          localStorage.removeItem('authToken');
+          setAuthState({ isAuthenticated: false, isAdmin: false });
+        }
       }
     };
     checkSession();
@@ -1018,7 +1033,13 @@ const { lang, setLang } = useLang();
     return () => window.removeEventListener('keydown', onKey);
   }, [invoiceToView, isMobileMenuOpen]);
 
-  const handleLogout = () => {
+    const handleLogout = async () => {
+    // 📴 Warn if some orders/bills are still only on this device
+    if (
+      (await hasUnsyncedChanges()) &&
+      !window.confirm('Some orders/bills are saved on this device but NOT synced yet.\nThey will sync the next time this restaurant logs in here.\n\nLog out anyway?')
+    ) return;
+    localStorage.removeItem('offlineSessionUser');
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     localStorage.removeItem('staffRole');
@@ -1353,6 +1374,10 @@ const { lang, setLang } = useLang();
           </span>
         </footer>
       </div>
+
+      
+      {/* 📴 Offline / sync status */}
+      <OfflineBanner />
 
       {/* GLOBAL INVOICE MODAL */}
       {invoiceToView && (

@@ -38,7 +38,7 @@ app.use(cors({
         return callback(new Error("CORS: origin not allowed"));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+        allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
     optionsSuccessStatus: 200
 }));
 
@@ -155,6 +155,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
 // ==========================================
 app.use("/api/public", require("./routes/publicMenu"));
 app.use("/api", requireAuth);
+app.use("/api", require("./utils/idempotency"));
 
 app.post("/api/auth/verify", requireAuth, async (req, res) => {
     try {
