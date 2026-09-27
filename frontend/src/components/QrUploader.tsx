@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
-const PROVIDERS = ['Fonepay', 'eSewa', 'Khalti', 'IME Pay'];
+const PROVIDERS = [ 'eSewa', 'Khalti', 'IME Pay'];
 
 interface QrConfig {
   _id: string;
@@ -137,7 +137,7 @@ function QrPreviewModal({
 
 export default function QrManager() {
   const [configs, setConfigs] = useState<QrConfig[]>([]);
-  const [providerName, setProviderName] = useState('Fonepay');
+  const [providerName, setProviderName] = useState('');
   const [busy, setBusy] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

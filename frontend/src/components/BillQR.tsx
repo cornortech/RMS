@@ -7,9 +7,9 @@ const API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com')
 export type WalletId = 'eSewa' | 'Khalti' | 'IMEPay';
 
 /** Provider names the /qr/dynamic endpoint expects */
-type ProviderName = 'Fonepay' | 'eSewa' | 'Khalti' | 'IME Pay';
+type ProviderName =  'eSewa' | 'Khalti' | 'IME Pay';
 
-const PROVIDERS: ProviderName[] = ['Fonepay', 'eSewa', 'Khalti', 'IME Pay'];
+const PROVIDERS: ProviderName[] = [ 'eSewa', 'Khalti', 'IME Pay'];
 
 const WALLET_TO_PROVIDER: Record<WalletId, ProviderName> = {
   eSewa: 'eSewa',
@@ -19,7 +19,7 @@ const WALLET_TO_PROVIDER: Record<WalletId, ProviderName> = {
 
 // Brand colours for the frame, label and loader
 const PROVIDER_STYLE: Record<ProviderName, { color: string; soft: string; label: string }> = {
-  Fonepay: { color: '#D71920', soft: '#FDECEC', label: 'Fonepay' },
+ 
   eSewa: { color: '#60BB46', soft: '#EEF8EB', label: 'eSewa' },
   Khalti: { color: '#5C2D91', soft: '#F1EAF8', label: 'Khalti' },
   'IME Pay': { color: '#E11D48', soft: '#FDECF0', label: 'IME Pay' },
@@ -58,13 +58,13 @@ const getStoredRestaurantId = (): string => {
 };
 
 const toProvider = (value?: string): ProviderName =>
-  (PROVIDERS as string[]).includes(value || '') ? (value as ProviderName) : 'Fonepay';
+  (PROVIDERS as string[]).includes(value || '') ? (value as ProviderName) : '';
 
 export default function BillQR({
   amount,
   billNo,
   method,
-  defaultProvider = 'Fonepay',
+  defaultProvider = '',
   restaurantId: propRestaurantId,
 }: BillQRProps) {
   const locked = !!method;
