@@ -12,4 +12,5 @@ const restaurantStaffSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+restaurantStaffSchema.index({ restaurantName: 1, id: 1 });
 module.exports = mongoose.model("RestaurantStaff", restaurantStaffSchema, "restaurantstaffs");

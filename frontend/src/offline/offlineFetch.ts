@@ -12,7 +12,7 @@ import { db, type OutboxItem } from './db';
 //   When the internet comes back → send the outbox to the server in order
 // =====================================================================
 
-export const API_ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+export const API_ROOT = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 
 // Only these writes can be done offline. Everything else (menu, staff,
 // settings, tables...) still needs internet, which is safer.

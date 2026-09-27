@@ -110,5 +110,6 @@ const restaurantBillingSchema = mongoose.Schema({
     timestamps: true,
 });
 
+restaurantBillingSchema.index({ restaurantId: 1, createdAt: -1 });
 const Bill = mongoose.model("RestaurantBill", restaurantBillingSchema);
 module.exports = Bill;

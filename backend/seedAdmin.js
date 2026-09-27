@@ -26,12 +26,18 @@ async function createAdmin() {
         }
 
         // Hash password securely
-        const hashedPassword = await bcrypt.hash("123", 12);
+                const adminId = (process.env.ADMIN_ID || "").trim();
+        const adminPassword = process.env.ADMIN_PASSWORD || "";
+        if (!adminId || adminPassword.length < 12) {
+            console.error("❌ Set ADMIN_ID and ADMIN_PASSWORD (at least 12 characters) in backend/.env first.");
+            process.exit(1);
+        }
+        const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
         // Create the master admin account
         await RestaurantUser.create({
             restaurantName: "Admin",
-            id: "123",
+            id: adminId,
             password: hashedPassword,
             phone: "9800000000",
             email: "admin@gmail.com",

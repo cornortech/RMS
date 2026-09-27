@@ -1375,7 +1375,7 @@ const { lang, setLang } = useLang();
         </footer>
       </div>
 
-      
+
       {/* 📴 Offline / sync status */}
       <OfflineBanner />
 

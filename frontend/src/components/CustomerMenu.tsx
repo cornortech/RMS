@@ -269,7 +269,7 @@ export default function CustomerMenu() {
       <div className="space-y-6 px-4 py-5">
         {Object.keys(grouped).length === 0 && <p className="py-10 text-center text-slate-500">No items found.</p>}
 
-        {Object.entries(grouped).map(([cat, items]) => (
+        {(Object.entries(grouped) as [string, MenuItem[]][]).map(([cat, items]) => (
           <section key={cat}>
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-slate-500">
               {CATEGORY_EMOJI[cat] || '🍽️'} {cat}

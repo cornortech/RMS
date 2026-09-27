@@ -61,5 +61,6 @@ const createOrderSchema = mongoose.Schema({
     timestamps: true,
 });
 
+createOrderSchema.index({ restaurantId: 1, createdAt: -1 });
 const Order = mongoose.model("RestaurantOrder", createOrderSchema);
 module.exports = Order;

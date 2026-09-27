@@ -21,4 +21,5 @@ const restaurantUserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+restaurantUserSchema.index({ id: 1 });
 module.exports = mongoose.model("RestaurantUser", restaurantUserSchema, "restaurantusers");

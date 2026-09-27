@@ -16,6 +16,10 @@ const RestaurantStaff = require("./models/loginStaff");
 const { hashPassword, verifyPassword, needsRehash, validateNewPassword } = require("./utils/password");
 const { signToken, requireAuth, requireAdmin, requireManager } = require("./utils/auth");
 const loyaltyRoutes = require("./routes/loyalty");
+const WaiterCall = require("./models/waiterCall");
+const QrConfig = require("./models/QrConfig");
+const Loyalty = require("./models/loyalty");
+const { isExpired, EXPIRED_MESSAGE } = require("./utils/subscription");
 
 
 const app = express();
@@ -29,7 +33,7 @@ app.disable("x-powered-by");
 app.use(helmet());
 
 // Only these websites may call the API from a browser (set ALLOWED_ORIGINS in .env).
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "rms-seven-neon.vercel.app,http://localhost:5173")
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://rms-seven-neon.vercel.app,http://localhost:3000")
     .split(",").map((o) => o.trim()).filter(Boolean);
 
 app.use(cors({
@@ -129,8 +133,11 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
 
         if (!restaurant.isActive) {
             return res.status(403).json({ success: false, message: "Account is deactivated. Contact Admin." });
+       
         }
-
+        if (isExpired(restaurant)) {
+            return res.status(403).json({ success: false, code: "SUBSCRIPTION_EXPIRED", message: EXPIRED_MESSAGE });
+        }
         // Upgrade an old plain-text password to a secure hash on the first successful login.
         if (needsRehash(restaurant.password)) {
             restaurant.password = await hashPassword(password);
@@ -259,6 +266,7 @@ guard("/api/orders", { POST: [M, W], PUT: [M, W, K, C], DELETE: [M] });
 guard("/api/bills",  { POST: [M, C], PATCH: [M, C] });
 guard("/api/tables", { POST: [M, C], PUT: [M, W, C], DELETE: [M] });
 guard("/api/stocks", { POST: [M, K, C], PUT: [M, K, C], DELETE: [M] });
+guard("/api/loyalty", { POST: [M, C], PUT: [M, C], PATCH: [M, C], DELETE: [M] });
 
 
 
@@ -392,7 +400,7 @@ app.get("/api/menu", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error fetching menu data.",
-            error: error.message, // shows the real reason in the browser Network tab
+                        error: process.env.NODE_ENV === "production" ? undefined : error.message,
         });
     }
 });
@@ -1252,7 +1260,7 @@ app.put("/api/admin/users/:userId", requireAuth, requireManager, async (req, res
         }
         if (restaurant.id !== oldId) {
             await Promise.all(
-                [Menu, Order, Table, Bill, Stock].map((M) =>
+                 [Menu, Order, Table, Bill, Stock, WaiterCall, QrConfig, Loyalty].map((M) =>
                     M.updateMany({ restaurantId: oldId }, { $set: { restaurantId: restaurant.id } })
                 )
             );

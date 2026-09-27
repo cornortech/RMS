@@ -38,5 +38,6 @@ tableSchema.virtual('freeSeats').get(function() {
     return Math.max(0, this.capacity - this.occupiedSeats);
 });
 
+tableSchema.index({ restaurantId: 1, createdAt: -1 });
 const Table = mongoose.model("RestaurantTable", tableSchema);
 module.exports = Table;

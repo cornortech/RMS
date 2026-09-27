@@ -36,5 +36,6 @@ const stockSchema = new mongoose.Schema(
     }
 );
 
+stockSchema.index({ restaurantId: 1, createdAt: -1 });
 const Stock = mongoose.model("Stock", stockSchema);
 module.exports = Stock;
