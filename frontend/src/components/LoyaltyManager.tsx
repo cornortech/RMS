@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Award, CalendarClock, Edit3, Gift, Loader2, Plus, Search, Star, Trash2, Users, X, CheckCircle2, AlertCircle,
 } from 'lucide-react';
@@ -48,7 +49,9 @@ async function api(path: string, options: RequestInit = {}) {
 const INPUT =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100';
 
-/* Program form (used for "create" and "edit") */
+/* ------------------------------------------------------------------ */
+/*  Program form (used for "create" and "edit")                        */
+/* ------------------------------------------------------------------ */
 function ProgramForm({
   value,
   onChange,
@@ -97,7 +100,17 @@ function formFromProgram(p: Program) {
   };
 }
 
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+// The popup is drawn directly on <body> (a "portal"). Inside the Settings page a parent box
+// has an animation, which would otherwise make the popup center inside that box, half off-screen.
+function Overlay({
+  children,
+  onClose,
+  size = 'wide',
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  size?: 'wide' | 'form';
+}) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -109,21 +122,26 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
     };
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-3 sm:p-6" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/50 p-3 sm:p-6" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
-        className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl ${
+          size === 'form' ? 'max-w-2xl' : 'max-w-5xl'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
-/* Members of one program */
+/* ------------------------------------------------------------------ */
+/*  Members of one program                                             */
+/* ------------------------------------------------------------------ */
 function MembersModal({
   program,
   onClose,
@@ -312,7 +330,9 @@ function MembersModal({
   );
 }
 
-/* Main screen: Settings → Manage Loyalty */
+/* ------------------------------------------------------------------ */
+/*  Main screen: Settings → Manage Loyalty                             */
+/* ------------------------------------------------------------------ */
 export default function LoyaltyManager() {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
@@ -320,6 +340,7 @@ export default function LoyaltyManager() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Program | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [opened, setOpened] = useState<Program | null>(null);
@@ -360,6 +381,7 @@ export default function LoyaltyManager() {
       const data = await api('/programs', { method: 'POST', body: toBody(form) });
       notify('success', data.message);
       setForm(EMPTY_FORM);
+      setShowCreate(false);
       await load();
     } catch (err: any) {
       notify('error', err.message);
@@ -412,30 +434,24 @@ export default function LoyaltyManager() {
         </div>
       )}
 
-      {/* Create */}
-      <form onSubmit={create} className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
-          <Plus className="h-5 w-5 text-purple-600" /> Add new loyalty program
-        </h3>
-        <ProgramForm value={form} onChange={setForm} />
-        <div className="mt-5 flex justify-end">
-          <button
-            type="submit"
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Create program
-          </button>
-        </div>
-      </form>
-
       {/* List */}
       <div>
-        <h3 className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900">
-          <Award className="h-5 w-5 text-purple-600" /> Your programs
-          <span className="text-sm font-normal text-slate-500">({programs.length})</span>
-        </h3>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+            <Award className="h-5 w-5 text-purple-600" /> Your programs
+            <span className="text-sm font-normal text-slate-500">({programs.length})</span>
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              setForm(EMPTY_FORM);
+              setShowCreate(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700"
+          >
+            <Plus className="h-4 w-4" /> Add new program
+          </button>
+        </div>
 
         {loading ? (
           <div className="flex justify-center py-10 text-slate-400">
@@ -443,7 +459,7 @@ export default function LoyaltyManager() {
           </div>
         ) : programs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
-            No loyalty programs yet. Create your first one above.
+            No loyalty programs yet. Click <b>Add new program</b> to create your first one.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -508,9 +524,41 @@ export default function LoyaltyManager() {
         )}
       </div>
 
+      {/* Add new program */}
+      {showCreate && (
+        <Overlay size="form" onClose={() => setShowCreate(false)}>
+          <form onSubmit={create} className="flex min-h-0 flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <p className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                <Plus className="h-5 w-5 text-purple-600" /> Add new loyalty program
+              </p>
+              <button type="button" onClick={() => setShowCreate(false)} aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-5">
+              <ProgramForm value={form} onChange={setForm} />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+              <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create program
+              </button>
+            </div>
+          </form>
+        </Overlay>
+      )}
+
       {/* Edit */}
       {editing && (
-        <Overlay onClose={() => setEditing(null)}>
+        <Overlay size="form" onClose={() => setEditing(null)}>
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <p className="text-lg font-bold text-slate-900">Edit program</p>
             <button onClick={() => setEditing(null)} aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
