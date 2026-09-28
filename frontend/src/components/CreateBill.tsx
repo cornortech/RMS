@@ -112,6 +112,13 @@ type PaymentSplit = Partial<Record<PaymentMethod, number>>;
 type SortMode = 'oldest' | 'newest' | 'highest';
 type WaitFilter = 'all' | '30' | '60';
 
+interface PendingCustomer {
+  key: string;
+  name: string;
+  count: number;
+  total: number;
+}
+
 interface MethodStyle {
   activeCard: string;
   iconActive: string;
@@ -1791,6 +1798,11 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMember | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState<number>(0);
 
+    // Pending customers (for "Pay later")
+  const [pendingCustomers, setPendingCustomers] = useState<PendingCustomer[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingName, setPendingName] = useState('');
+
   const amountRefs = useRef<Partial<Record<PaymentMethod, HTMLInputElement | null>>>({});
   const toastTimer = useRef<number | null>(null);
 
@@ -1836,6 +1848,42 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     fetchServedOrders();
   }, [fetchServedOrders]);
 
+    // Load customers who already have pending bills (grouped by name)
+  const fetchPendingCustomers = useCallback(async () => {
+    setPendingLoading(true);
+    try {
+      const url = restaurantId
+        ? `${BILLS_URL}?restaurantId=${encodeURIComponent(restaurantId)}`
+        : BILLS_URL;
+      const res = await fetch(url);
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.message || 'Failed to load pending customers.');
+
+      const map = new Map<string, PendingCustomer>();
+      (result.data || [])
+        .filter((b: any) => b.paymentMethod === 'Pending')
+        .forEach((b: any) => {
+          const name = String(b.billTo || '').trim();
+          if (!name) return;
+          const key = name.toLowerCase();
+          const existing = map.get(key);
+          if (existing) {
+            existing.count += 1;
+            existing.total += b.grandTotal || 0;
+          } else {
+            map.set(key, { key, name, count: 1, total: b.grandTotal || 0 });
+          }
+        });
+
+      setPendingCustomers(Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      console.error('Could not load pending customers:', err);
+      setPendingCustomers([]);
+    } finally {
+      setPendingLoading(false);
+    }
+  }, [restaurantId]);
+
   // Reset everything whenever the selected order changes
   useEffect(() => {
     setDiscountPercent(0);
@@ -1847,6 +1895,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setVatRate(DEFAULT_VAT_RATE);
     setQrMethod(null);
     setBillToName('');
+    setPendingName('');
     setLoyaltyOpen(false);
     setLoyaltyMember(null);
     setLoyaltyPoints(0);
@@ -1910,8 +1959,10 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   // A real person's name (empty if the order is a "Guest" and nothing was typed)
   const realCustomerName = needsName ? typedName : (selectedOrder?.customerName || '').trim();
   // What is printed on the bill — never empty
+    const pendingTyped = pendingName.trim();
   const finalBillTo = selectedOrder
-    ? realCustomerName ||
+    ? (markAsPending && pendingTyped) ||
+      realCustomerName ||
       (selectedOrder.customerName || '').trim() ||
       (orderHasTable ? `Guest (${selectedOrder.tableNumber})` : 'Guest')
     : '';
@@ -1949,6 +2000,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const grandTotal = taxableAmount + vatCollected;
 
   const suggestedLoyaltyPoints = suggestedPoints(grandTotal);
+
+    // Does the typed pending name match a customer who already has a pending tab?
+  const pendingMatch = pendingCustomers.find((c) => c.key === pendingTyped.toLowerCase()) || null;
 
   const totalPaid = useMemo(
     () => Object.values(paymentSplit).reduce((s, v) => s + (Number(v) || 0), 0),
@@ -2030,7 +2084,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   };
 
   // Loyalty points are only given when payment is collected, so "Pay later" clears loyalty
-  const togglePending = () => {
+    const togglePending = () => {
     const next = !markAsPending;
     setMarkAsPending(next);
     if (next) {
@@ -2040,6 +2094,11 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       setLoyaltyOpen(false);
       setLoyaltyMember(null);
       setLoyaltyPoints(0);
+      // Start with the name we already know (typed name or order's customer name)
+      setPendingName(billToName.trim() || realCustomerName);
+      fetchPendingCustomers();
+    } else {
+      setPendingName('');
     }
   };
 
@@ -2070,6 +2129,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setVatRate(DEFAULT_VAT_RATE);
     setQrMethod(null);
     setBillToName('');
+    setPendingName('');
     setLoyaltyOpen(false);
     setLoyaltyMember(null);
     setLoyaltyPoints(0);
@@ -2641,7 +2701,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
               {/* LEFT: name + items + adjustments */}
               <div className="cb-scroll flex flex-col gap-5 p-4 sm:p-6 lg:min-h-0 lg:overflow-y-auto lg:p-8">
                 {/* Customer name — only when the order has no real name */}
-                {needsName && (
+                {needsName && !markAsPending && (
                   <section className={`${CARD} cb-fade shrink-0 overflow-hidden`} aria-labelledby="bill-name-title">
                     <div className="flex items-start gap-3 p-4 sm:p-5">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-indigo-500 text-white shadow-md shadow-indigo-500/25">
@@ -3006,6 +3066,125 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     </span>
                     {markAsPending && <CheckCircle2 className="h-5 w-5 shrink-0 text-amber-600" />}
                   </button>
+
+
+                  {/* Pending customer picker — only when "Pay later" is on */}
+                  {markAsPending && (
+                    <section
+                      className="cb-fade space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4"
+                      aria-label={tr(lang, 'Customer for pending bill', 'बाँकी बिलको ग्राहक')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                          <Users className="h-4 w-4 text-amber-600" />
+                          {tr(lang, 'Customer for pending bill', 'बाँकी बिलको ग्राहक')}
+                        </p>
+                        {pendingLoading && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
+                      </div>
+
+                      {/* Name input */}
+                      <div className="relative">
+                        <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={pendingName}
+                          onChange={(e) => setPendingName(e.target.value)}
+                          placeholder={tr(lang, 'Type a new name or pick below', 'नयाँ नाम लेख्नुहोस् वा तल छान्नुहोस्')}
+                          aria-label={tr(lang, 'Pending customer name', 'बाँकी ग्राहकको नाम')}
+                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-9 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20"
+                        />
+                        {pendingName && (
+                          <button
+                            type="button"
+                            onClick={() => setPendingName('')}
+                            aria-label={tr(lang, 'Clear name', 'नाम हटाउनुहोस्')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-slate-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Hint: existing tab or new tab */}
+                      {pendingTyped && (
+                        pendingMatch ? (
+                          <p className="flex items-start gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            {tr(
+                              lang,
+                              `Will be added to ${pendingMatch.name}'s existing tab (${pendingMatch.count} bill${pendingMatch.count !== 1 ? 's' : ''}, NPR ${moneyCompact(pendingMatch.total)}).`,
+                              `${pendingMatch.name} को पुरानो खातामा थपिनेछ (${pendingMatch.count} बिल, NPR ${moneyCompact(pendingMatch.total)})।`
+                            )}
+                          </p>
+                        ) : (
+                          <p className="flex items-start gap-1.5 rounded-lg bg-sky-50 px-2.5 py-2 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            {tr(
+                              lang,
+                              `A new pending tab will be created for "${pendingTyped}".`,
+                              `"${pendingTyped}" को नयाँ बाँकी खाता बन्नेछ।`
+                            )}
+                          </p>
+                        )
+                      )}
+
+                      {/* List of customers who already have pending bills */}
+                      {pendingCustomers.length > 0 ? (
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {tr(lang, 'Customers with pending bills', 'बाँकी बिल भएका ग्राहक')}
+                          </p>
+                          <ul className="cb-scroll max-h-52 space-y-1.5 overflow-y-auto pr-1">
+                            {pendingCustomers.map((c) => {
+                              const active = c.key === pendingTyped.toLowerCase();
+                              return (
+                                <li key={c.key}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPendingName(c.name)}
+                                    aria-pressed={active}
+                                    className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border-2 p-2.5 text-left transition-all ${FOCUS} ${
+                                      active
+                                        ? 'border-amber-400 bg-white shadow-sm'
+                                        : 'border-transparent bg-white/70 hover:border-amber-200 hover:bg-white'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${gradientFor(c.name)} text-xs font-extrabold text-white`}
+                                      aria-hidden="true"
+                                    >
+                                      {initials(c.name)}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-sm font-bold text-slate-900">{c.name}</span>
+                                      <span className="block text-[11px] text-slate-500">
+                                        {c.count} {tr(lang, c.count !== 1 ? 'bills' : 'bill', 'बिल')}
+                                      </span>
+                                    </span>
+                                    <span className="shrink-0 font-mono text-xs font-bold text-amber-700">
+                                      NPR {moneyCompact(c.total)}
+                                    </span>
+                                    {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ) : (
+                        !pendingLoading && (
+                          <p className="text-[11px] text-slate-500">
+                            {tr(
+                              lang,
+                              'No pending customers yet. Type a name above to create the first one.',
+                              'अहिले बाँकी ग्राहक छैन। माथि नाम लेख्नुहोस्।'
+                            )}
+                          </p>
+                        )
+                      )}
+                    </section>
+                  )}
+
 
                   {/* Loyalty — only when payment is collected now */}
                   {!markAsPending && (
