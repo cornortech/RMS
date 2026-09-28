@@ -76,9 +76,20 @@ interface LoyaltyMember {
   customerName: string;
   customerPhone: string;
   tier: string;
-  points: number;
+    points: number;
   totalPointsEarned: number;
+  programId?: string;
+  programName?: string;
 }
+
+interface LoyaltyProgramOption {
+  _id: string;
+  name: string;
+  reward: string;
+  pointsRequired: number;
+}
+
+const LAST_PROGRAM_KEY = 'rms_last_loyalty_program';
 
 interface BillLoyalty {
   memberId: string;
@@ -737,6 +748,11 @@ function LoyaltyModal({
   const [selected, setSelected] = useState<LoyaltyMember | null>(initialMember);
   const [points, setPoints] = useState<number>(initialMember ? initialPoints : suggested);
 
+   // Loyalty programs: choose one first, then pick or add a customer in it
+  const [programs, setPrograms] = useState<LoyaltyProgramOption[]>([]);
+  const [programId, setProgramId] = useState<string>(initialMember?.programId || '');
+  const [programsLoaded, setProgramsLoaded] = useState(false);
+
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollForm, setEnrollForm] = useState({ customerPhone: '', customerName: '' });
   const [enrolling, setEnrolling] = useState(false);
@@ -779,6 +795,41 @@ function LoyaltyModal({
     return () => ctrl.abort();
   }, [restaurantId, reloadKey, lang]);
 
+    useEffect(() => {
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`${LOYALTY_URL}/programs`, { signal: ctrl.signal });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) throw new Error(data?.message || 'Could not load loyalty programs.');
+        const list: LoyaltyProgramOption[] = data.data || [];
+        setPrograms(list);
+        setProgramId((current) => {
+          if (current && list.some((p) => p._id === current)) return current;
+          const last = localStorage.getItem(LAST_PROGRAM_KEY) || '';
+          return list.some((p) => p._id === last) ? last : list[0]?._id || '';
+        });
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') setError(err?.message || 'Could not load loyalty programs.');
+      } finally {
+        if (!ctrl.signal.aborted) setProgramsLoaded(true);
+      }
+    })();
+    return () => ctrl.abort();
+  }, [reloadKey]);
+
+  const activeProgram = programs.find((p) => p._id === programId) || null;
+  const programMembers = useMemo(
+    () => (programId ? members.filter((m) => String(m.programId || '') === programId) : []),
+    [members, programId]
+  );
+
+  const changeProgram = (id: string) => {
+    setProgramId(id);
+    localStorage.setItem(LAST_PROGRAM_KEY, id);
+    if (selected && String(selected.programId || '') !== id) setSelected(null);
+  };
+
   const isLikelyMatch = useCallback(
     (m: LoyaltyMember) => {
       const target = (customerName || '').trim().toLowerCase();
@@ -791,7 +842,7 @@ function LoyaltyModal({
 
   const visibleMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = members.filter((m) => {
+    const list = programMembers.filter((m) => {
       if (!q) return true;
       return (
         (m.customerName || '').toLowerCase().includes(q) ||
@@ -804,9 +855,9 @@ function LoyaltyModal({
       if (la !== lb) return lb - la;
       return (b.points || 0) - (a.points || 0);
     });
-  }, [members, search, isLikelyMatch]);
+  }, [programMembers, search, isLikelyMatch]);
 
-  const totalActivePoints = useMemo(() => members.reduce((s, m) => s + (m.points || 0), 0), [members]);
+  const totalActivePoints = useMemo(() => programMembers.reduce((s, m) => s + (m.points || 0), 0), [programMembers]);
 
   const pickMember = (m: LoyaltyMember) => {
     setSelected(m);
@@ -825,7 +876,11 @@ function LoyaltyModal({
   };
 
   const handleEnroll = async () => {
-    const phone = enrollForm.customerPhone.trim();
+        const phone = enrollForm.customerPhone.trim();
+    if (!programId) {
+      setEnrollError(tr(lang, 'Choose a loyalty program first.', 'पहिले लोयल्टी कार्यक्रम छान्नुहोस्।'));
+      return;
+    }
     if (!phone) {
       setEnrollError(tr(lang, 'Phone number is required.', 'फोन नम्बर आवश्यक छ।'));
       return;
@@ -838,6 +893,7 @@ function LoyaltyModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restaurantId,
+          programId,
           customerPhone: phone,
           customerName: enrollForm.customerName.trim(),
           points: 0,
@@ -916,7 +972,7 @@ function LoyaltyModal({
             <div className="relative mt-4 flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold ring-1 ring-white/25">
                 <Users className="h-3.5 w-3.5" />
-                {members.length} {tr(lang, 'members', 'सदस्य')}
+                             {programMembers.length} {tr(lang, 'members', 'सदस्य')}
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold ring-1 ring-white/25">
                 <Star className="h-3.5 w-3.5" fill="currentColor" />
@@ -937,7 +993,39 @@ function LoyaltyModal({
           <div className="flex min-h-0 flex-1">
             {/* LEFT: search + list */}
             <div className={`${selected ? 'hidden md:flex' : 'flex'} min-h-0 w-full flex-col border-slate-100 md:w-[46%] md:border-r`}>
-              <div className="shrink-0 space-y-3 border-b border-slate-100 p-4">
+                            <div className="shrink-0 space-y-3 border-b border-slate-100 p-4">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">
+                    {tr(lang, 'Loyalty program', 'लोयल्टी कार्यक्रम')}
+                  </label>
+                  {programsLoaded && programs.length === 0 ? (
+                    <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-800">
+                      {tr(
+                        lang,
+                        'No loyalty program yet. A Manager can create one in Settings → Manage Loyalty.',
+                        'लोयल्टी कार्यक्रम छैन। सेटिङ → Manage Loyalty मा बनाउनुहोस्।'
+                      )}
+                    </p>
+                  ) : (
+                    <select
+                      value={programId}
+                      onChange={(e) => changeProgram(e.target.value)}
+                      aria-label={tr(lang, 'Loyalty program', 'लोयल्टी कार्यक्रम')}
+                      className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    >
+                      {programs.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.name} — {p.reward} ({p.pointsRequired} pts)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {activeProgram && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      🎁 {activeProgram.reward} · ⭐ {activeProgram.pointsRequired} {tr(lang, 'points needed', 'अंक चाहिन्छ')}
+                    </p>
+                  )}
+                </div>
                 <div className="relative">
                   {loading ? (
                     <Loader2 className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-amber-500" aria-hidden="true" />

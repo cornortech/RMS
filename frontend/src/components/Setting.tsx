@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import QrUploader from "./QrUploader";
 import TableQrManager from "./TableQrManager";
+   import LoyaltyManager from "./LoyaltyManager";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com").trim().replace(/\/+$/, '');
 
@@ -528,131 +529,13 @@ export default function RESTAURANTSettings() {
   </div>
 )}
 
-            {activeTab === "loyaltyManage" && (
+              {activeTab === "loyaltyManage" && (
               <div role="tabpanel">
-                <div style={styles.loyaltyHeaderRow}>
-                  <div>
-                    <h2 style={styles.sectionTitle}>Customer Loyalty Program</h2>
-                    <p style={styles.sectionDesc}>Add New into programs, track rewards, and manage points</p>
-                  </div>
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="rs-btn-primary"
-                    style={{ ...styles.submitBtn, marginTop: 0, width: "auto", padding: "10px 18px" }}
-                  >
-                    + Add New
-                  </button>
+                <div style={styles.sectionHeader}>
+                  <h2 style={styles.sectionTitle}>Manage Loyalty</h2>
+                  <p style={styles.sectionDesc}>Create loyalty programs. Customers join them from Create Bill or Pending Bill.</p>
                 </div>
-
-                {/* Metrics Cards */}
-                <div style={styles.loyaltyMetricsGrid}>
-                  <div style={styles.metricCard}>
-                    <div style={styles.metricLabel}>Total Enrollments</div>
-                    <div style={styles.metricValue}>{loyaltyCounts.totalEnrollments}</div>
-                  </div>
-                  <div style={styles.metricCard}>
-                    <div style={styles.metricLabel}>Active Points Pool</div>
-                    <div style={styles.metricValue}>{loyaltyCounts.totalActivePoints}</div>
-                  </div>
-                  <div style={styles.metricCard}>
-                    <div style={styles.metricLabel}>Lifetime Earned</div>
-                    <div style={styles.metricValue}>{loyaltyCounts.totalLifetimePoints}</div>
-                  </div>
-                </div>
-
-                {/* Search Bar */}
-                <div style={{ marginBottom: 20 }}>
-                  <input
-                    type="text"
-                    placeholder="Search by customer name, phone, or program..."
-                    value={loyaltySearch}
-                    onChange={(e) => setLoyaltySearch(e.target.value)}
-                    className="rs-input"
-                    style={{ ...styles.input, maxWidth: 360 }}
-                  />
-                </div>
-
-                {/* Loyalty Table */}
-                {loyaltyLoading ? (
-                  <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>Loading loyalty records…</div>
-                ) : loyaltyMembers.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px", color: "#64748b", background: "#faf5ff", borderRadius: 16, border: "1px dashed #e9d5ff" }}>
-                    No loyalty records found. Click "+ Add New" to add one!
-                  </div>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={styles.table}>
-                      <thead>
-                        <tr style={styles.tableHeaderRow}>
-                          <th style={styles.th}>Customer Name</th>
-                          <th style={styles.th}>Phone Number</th>
-                          <th style={styles.th}>Program Name</th>
-                          <th style={styles.th}>Reward</th>
-                          <th style={styles.th}>Complete Within</th>
-                          <th style={styles.th}>Points</th>
-                          <th style={{ ...styles.th, textAlign: "right" }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {loyaltyMembers.map((member) => (
-                          <tr key={member._id} style={styles.tableRow}>
-                            <td style={styles.td}><strong>{member.customerName}</strong></td>
-                            <td style={styles.td}>{member.customerPhone}</td>
-                            <td style={styles.td}><span style={styles.programBadge}>{member.programName}</span></td>
-                            <td style={styles.td}>{member.reward}</td>
-                            <td style={styles.td}>{member.completeWithinDays} days</td>
-                            <td style={styles.td}><span style={{ color: "#9333ea", fontWeight: 700 }}>{member.points} pts</span></td>
-                            <td style={{ ...styles.td, textAlign: "right" }}>
-                              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                                <button
-                                  onClick={() => {
-                                    setSelectedMember(member);
-                                    setPointsForm({ action: "ADD", points: 0 });
-                                    setShowPointsModal(true);
-                                  }}
-                                  className="rs-btn-ghost"
-                                  style={styles.actionBtn}
-                                  title="Manage Points"
-                                >
-                                  ⭐ Points
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedMember(member);
-                                    setEditLoyaltyForm({
-                                      customerName: member.customerName || "",
-                                      customerPhone: member.customerPhone || "",
-                                      programName: member.programName || "",
-                                      reward: member.reward || "",
-                                      completeWithinDays: member.completeWithinDays || 30,
-                                      description: member.description || "",
-                                      points: member.points || 0,
-                                      totalPointsEarned: member.totalPointsEarned || 0
-                                    });
-                                    setShowEditModal(true);
-                                  }}
-                                  className="rs-btn-ghost"
-                                  style={styles.actionBtn}
-                                  title="Edit Info"
-                                >
-                                  ✏️ Edit
-                                </button>
-                                <button
-                                  onClick={() => confirmDeleteLoyalty(member)}
-                                  className="rs-btn-ghost"
-                                  style={{ ...styles.actionBtn, color: "#dc2626" }}
-                                  title="Delete"
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <LoyaltyManager />
               </div>
             )}
 

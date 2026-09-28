@@ -16,19 +16,26 @@ const loyaltySchema = mongoose.Schema({
         default: "Valued Customer",
         trim: true,
     },
+        // The program this customer joined
+    programId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "RestaurantLoyaltyProgram",
+        index: true,
+    },
+    // Copied from the program (kept so older screens keep working)
     programName: {
         type: String,
-        required: true,
+        default: "",
         trim: true,
     },
     reward: {
         type: String,
-        required: true,
+        default: "",
         trim: true,
     },
     completeWithinDays: {
         type: Number,
-        required: true,
+        default: 1,
         min: 1,
     },
     description: {
@@ -52,6 +59,7 @@ const loyaltySchema = mongoose.Schema({
 
 // Compound index: ensures a customer phone number is unique per restaurant & program
 loyaltySchema.index({ restaurantId: 1, customerPhone: 1, programName: 1 }, { unique: true });
+loyaltySchema.index({ restaurantId: 1, programId: 1 });
 
 const Loyalty = mongoose.model("RestaurantLoyalty", loyaltySchema);
 module.exports = Loyalty;
