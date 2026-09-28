@@ -252,7 +252,7 @@ function SplashScreen({ lang }: { lang: Lang }) {
         <div className="relative h-24 w-24 flex items-center justify-center anim-floaty">
           <span className="absolute inset-0 rounded-[28px] bg-purple-400/30 anim-pulse-ring" />
           <span className="absolute -inset-2.5 rounded-[34px] border-2 border-purple-100 border-t-purple-600 anim-spin-slow" />
-                    <img
+                     <img
             src="/pwa-192.png"
             alt="Atithi RMS"
             className="relative h-24 w-24 rounded-[28px] bg-white object-contain p-1.5 shadow-2xl shadow-purple-500/40"
