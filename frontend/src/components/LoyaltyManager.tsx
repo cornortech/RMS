@@ -1,542 +1,956 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Award, CalendarClock, Edit3, Gift, Loader2, Plus, Search, Star, Trash2, Users, X, CheckCircle2, AlertCircle,
-} from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
-const LOYALTY_URL = `${API_BASE}/api/loyalty`;
+const API_BASE = (import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com").trim().replace(/\/+$/, "");
 
-interface Program {
-  _id: string;
-  name: string;
-  reward: string;
-  pointsRequired: number;
-  completeWithinDays: number;
-  description: string;
-  memberCount?: number;
-  totalActivePoints?: number;
-  rewardReadyCount?: number;
-}
-
-interface Member {
-  _id: string;
-  customerName: string;
-  customerPhone: string;
-  description?: string;
-  points: number;
-  totalPointsEarned: number;
-  joinedAt?: string;
-  daysLeft?: number;
-  isExpired?: boolean;
-  rewardReady?: boolean;
-}
-
-const EMPTY_FORM = { name: '', reward: '', pointsRequired: '100', completeWithinDays: '30', description: '' };
-
-async function api(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${LOYALTY_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) {
-    throw new Error(res.status === 403 ? 'Only a Manager can do this.' : data.message || 'Something went wrong.');
+/* ═══════════════════════════════════════════════════════════════════
+   SERVER CALLS — the only place in this file that talks to your backend.
+   If your old LoyaltyManager used other URLs or field names, change them
+   here. Nothing else in this file needs to change.
+   ═══════════════════════════════════════════════════════════════════ */
+const request = async (url, options) => {
+  const res = await fetch(url, options);
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    // the server did not send JSON
+  }
+  if (!res.ok || !data || data.success === false) {
+    throw new Error((data && data.message) || `Request failed (${res.status})`);
   }
   return data;
-}
+};
 
-const INPUT =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100';
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
-/* Program form (used for "create" and "edit") */
-function ProgramForm({
-  value,
-  onChange,
-}: {
-  value: typeof EMPTY_FORM;
-  onChange: (v: typeof EMPTY_FORM) => void;
-}) {
-  const set = (key: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    onChange({ ...value, [key]: e.target.value });
+const api = {
+  // All programs of this restaurant
+  listPrograms: async (restaurantId) => {
+    const data = await request(`${API_BASE}/api/loyalty-programs?restaurantId=${encodeURIComponent(restaurantId)}`);
+    return asArray(data.data);
+  },
 
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold text-slate-700">🏷️ Program Name *</span>
-        <input className={INPUT} value={value.name} onChange={set('name')} placeholder="e.g. Momo Lovers" maxLength={80} />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold text-slate-700">🎁 Reward *</span>
-        <input className={INPUT} value={value.reward} onChange={set('reward')} placeholder="e.g. 1 free plate of momo" maxLength={120} />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold text-slate-700">⭐ Points Needed for Reward *</span>
-        <input className={INPUT} type="number" min={1} value={value.pointsRequired} onChange={set('pointsRequired')} />
-        <span className="mt-1 block text-xs text-slate-500">1 point is given for every Rs. 100 on a bill.</span>
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold text-slate-700">⏳ Complete Within (Days) *</span>
-        <input className={INPUT} type="number" min={1} value={value.completeWithinDays} onChange={set('completeWithinDays')} />
-        <span className="mt-1 block text-xs text-slate-500">Days a customer has, from joining, to collect the points.</span>
-      </label>
-      <label className="block sm:col-span-2">
-        <span className="mb-1 block text-sm font-semibold text-slate-700">📝 Description</span>
-        <textarea className={`${INPUT} min-h-[70px]`} value={value.description} onChange={set('description')} placeholder="Short note about the program (optional)" maxLength={300} />
-      </label>
-    </div>
-  );
-}
+  // Create one program
+  createProgram: async (payload) => {
+    await request(`${API_BASE}/api/loyalty-programs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
 
-function formFromProgram(p: Program) {
-  return {
-    name: p.name,
-    reward: p.reward,
-    pointsRequired: String(p.pointsRequired),
-    completeWithinDays: String(p.completeWithinDays),
-    description: p.description || '',
-  };
-}
+  // Customers who joined one program
+  listMembers: async (restaurantId, program) => {
+    const data = await request(`${API_BASE}/api/loyalty?restaurantId=${encodeURIComponent(restaurantId)}&search=`);
+    return asArray(data.data).filter(
+      (m) =>
+        (m.programId && String(m.programId) === String(program._id)) ||
+        (m.programName && m.programName === program.programName)
+    );
+  },
+};
 
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
+const EMPTY_FORM = { programName: "", reward: "", completeWithinDays: 30, description: "" };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-3 sm:p-6" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
+const getRestaurantId = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem("RESTAURANTUser") || "null");
+    return (stored && (stored.id || stored.username)) || "";
+  } catch (e) {
+    return "";
+  }
+};
 
-/* Members of one program */
-function MembersModal({
-  program,
-  onClose,
-  onChanged,
-  notify,
-}: {
-  program: Program;
-  onClose: () => void;
-  onChanged: () => void;
-  notify: (type: 'success' | 'error', text: string) => void;
-}) {
-  const [members, setMembers] = useState<Member[]>([]);
+const programKey = (p) => p._id || p.id || p.programName;
+
+export default function LoyaltyManager() {
+  const restaurantId = useMemo(getRestaurantId, []);
+
+  const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [busyId, setBusyId] = useState('');
+  const [loadError, setLoadError] = useState("");
+  const [toast, setToast] = useState({ type: "", text: "" });
+  const toastTimer = useRef(null);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await api(`/programs/${program._id}/members`);
-      setMembers(data.data || []);
-    } catch (e: any) {
-      notify('error', e.message);
-    } finally {
-      setLoading(false);
-    }
+  // "Add New Program" card
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // "View Members" card
+  const [activeProgram, setActiveProgram] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
+  const membersRequest = useRef(0);
+
+  const showToast = (type, text) => {
+    clearTimeout(toastTimer.current);
+    setToast({ type, text });
+    toastTimer.current = setTimeout(() => setToast({ type: "", text: "" }), 4000);
   };
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const loadPrograms = useCallback(
+    async (silent = false) => {
+      if (!restaurantId) {
+        setLoading(false);
+        setLoadError("Restaurant session not found. Please log in again.");
+        return;
+      }
+      if (!silent) setLoading(true);
+      setLoadError("");
+      try {
+        setPrograms(await api.listPrograms(restaurantId));
+      } catch (err) {
+        setLoadError(err.message || "Could not load loyalty programs.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [restaurantId]
+  );
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [program._id]);
+    loadPrograms();
+  }, [loadPrograms]);
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  /* ── Add New Program ─────────────────────────────────────────── */
+  const openAdd = () => {
+    setForm(EMPTY_FORM);
+    setFormError("");
+    setShowAdd(true);
+  };
+
+  const closeAdd = () => {
+    if (!saving) setShowAdd(false);
+  };
+
+  const setField = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (saving) return;
+
+    const programName = form.programName.trim();
+    const reward = form.reward.trim();
+    const days = Number(form.completeWithinDays);
+
+    if (!programName) {
+      setFormError("Program name is required.");
+      return;
+    }
+    if (!reward) {
+      setFormError("Reward details are required.");
+      return;
+    }
+    if (!Number.isFinite(days) || days < 1) {
+      setFormError("Complete Within (Days) must be 1 or more.");
+      return;
+    }
+
+    setFormError("");
+    setSaving(true);
+    try {
+      await api.createProgram({
+        restaurantId,
+        programName,
+        reward,
+        completeWithinDays: Math.floor(days),
+        description: form.description.trim(),
+      });
+      setShowAdd(false);
+      setForm(EMPTY_FORM);
+      showToast("success", "Loyalty program created successfully!");
+      loadPrograms(true);
+    } catch (err) {
+      setFormError(err.message || "Failed to create the program.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ── View Members ────────────────────────────────────────────── */
+  const openMembers = async (program) => {
+    const requestId = ++membersRequest.current;
+    setActiveProgram(program);
+    setMembers([]);
+    setMembersError("");
+    setMemberSearch("");
+    setMembersLoading(true);
+    try {
+      const list = await api.listMembers(restaurantId, program);
+      if (requestId === membersRequest.current) setMembers(list);
+    } catch (err) {
+      if (requestId === membersRequest.current) setMembersError(err.message || "Could not load members.");
+    } finally {
+      if (requestId === membersRequest.current) setMembersLoading(false);
+    }
+  };
+
+  const closeMembers = () => {
+    membersRequest.current += 1; // ignore any answer that is still on its way
+    setActiveProgram(null);
+  };
+
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
     if (!q) return members;
-    return members.filter((m) => m.customerName.toLowerCase().includes(q) || m.customerPhone.includes(q));
-  }, [members, search]);
+    return members.filter((m) => `${m.customerName || ""} ${m.customerPhone || ""}`.toLowerCase().includes(q));
+  }, [members, memberSearch]);
 
-  const giveReward = async (m: Member) => {
-    if (!window.confirm(`Give "${program.reward}" to ${m.customerName}?\n${program.pointsRequired} points will be used.`)) return;
-    setBusyId(m._id);
-    try {
-      await api(`/${m._id}/points`, { method: 'PATCH', body: JSON.stringify({ action: 'REDEEM', points: program.pointsRequired }) });
-      notify('success', `Reward given to ${m.customerName}.`);
-      await load();
-      onChanged();
-    } catch (e: any) {
-      notify('error', e.message);
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const remove = async (m: Member) => {
-    if (!window.confirm(`Remove ${m.customerName} from "${program.name}"? Their points will be lost.`)) return;
-    setBusyId(m._id);
-    try {
-      await api(`/${m._id}`, { method: 'DELETE' });
-      notify('success', `${m.customerName} removed.`);
-      await load();
-      onChanged();
-    } catch (e: any) {
-      notify('error', e.message);
-    } finally {
-      setBusyId('');
-    }
-  };
+  const totalPoints = useMemo(() => members.reduce((sum, m) => sum + (Number(m.points) || 0), 0), [members]);
 
   return (
-    <Overlay onClose={onClose}>
-      <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-purple-50 px-5 py-4">
-        <div className="min-w-0">
-          <p className="text-lg font-bold text-slate-900">{program.name}</p>
-          <p className="mt-0.5 text-sm text-slate-600">
-            🎁 {program.reward} · ⭐ {program.pointsRequired} points · ⏳ within {program.completeWithinDays} days
-          </p>
+    <div style={styles.wrap}>
+      <LoyaltyStyles />
+      <Toast toast={toast} />
+
+      {/* Top bar: count + Add New Program button */}
+      <div style={styles.toolbar}>
+        <div>
+          <div style={styles.toolbarTitle}>Your loyalty programs</div>
+          <div style={styles.toolbarSub}>
+            {loading ? "Loading…" : `${programs.length} ${programs.length === 1 ? "program" : "programs"}`}
+          </div>
         </div>
-        <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-white">
-          <X className="h-5 w-5" />
+        <button type="button" onClick={openAdd} className="lm-btn-primary" style={styles.addBtn}>
+          <span aria-hidden="true" style={styles.plus}>+</span>
+          Add New Program
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            className={`${INPUT} pl-9`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name or phone"
-          />
+      {/* Programs list */}
+      {loading ? (
+        <div style={styles.stateBox}>
+          <span className="lm-spinner lm-spinner-dark" style={{ margin: 0 }} />
+          Loading programs…
         </div>
-        <span className="text-sm text-slate-500">
-          {members.length} member{members.length === 1 ? '' : 's'}
-        </span>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex justify-center py-16 text-slate-400">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : visible.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-500">
-            {members.length === 0
-              ? 'No customers have joined yet. Add them from Create Bill or Pending Bill.'
-              : 'No customer matches your search.'}
-          </div>
-        ) : (
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-semibold">Customer Name</th>
-                <th className="px-3 py-3 font-semibold">Phone Number</th>
-                <th className="px-3 py-3 font-semibold">Description</th>
-                <th className="px-3 py-3 font-semibold">Current Points</th>
-                <th className="px-3 py-3 font-semibold">Lifetime Earned</th>
-                <th className="px-3 py-3 font-semibold">Time Left</th>
-                <th className="px-5 py-3 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {visible.map((m) => {
-                const pct = Math.min(100, Math.round(((m.points || 0) / (program.pointsRequired || 1)) * 100));
-                return (
-                  <tr key={m._id} className="align-top">
-                    <td className="px-5 py-3">
-                      <p className="font-semibold text-slate-900">{m.customerName}</p>
-                      {m.joinedAt && (
-                        <p className="text-xs text-slate-400">Joined {new Date(m.joinedAt).toLocaleDateString()}</p>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-slate-700">{m.customerPhone}</td>
-                    <td className="max-w-[220px] px-3 py-3 text-slate-600">{m.description || '—'}</td>
-                    <td className="px-3 py-3">
-                      <p className="font-mono font-bold text-slate-900">
-                        {m.points} <span className="font-normal text-slate-400">/ {program.pointsRequired}</span>
-                      </p>
-                      <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                        <div className={`h-full ${m.rewardReady ? 'bg-emerald-500' : 'bg-purple-500'}`} style={{ width: `${pct}%` }} />
-                      </div>
-                      {m.rewardReady && (
-                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Reward ready
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-slate-700">{m.totalPointsEarned}</td>
-                    <td className="px-3 py-3">
-                      {m.isExpired ? (
-                        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">Expired</span>
-                      ) : (
-                        <span className="text-slate-700">{m.daysLeft} days</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex justify-end gap-2">
-                        {m.rewardReady && (
-                          <button
-                            disabled={busyId === m._id}
-                            onClick={() => giveReward(m)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            <Gift className="h-3.5 w-3.5" /> Give reward
-                          </button>
-                        )}
-                        <button
-                          disabled={busyId === m._id}
-                          onClick={() => remove(m)}
-                          title="Remove from program"
-                          className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </Overlay>
-  );
-}
-
-/* Main screen: Settings → Manage Loyalty */
-export default function LoyaltyManager() {
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const [editing, setEditing] = useState<Program | null>(null);
-  const [editForm, setEditForm] = useState(EMPTY_FORM);
-  const [opened, setOpened] = useState<Program | null>(null);
-
-  const notify = (type: 'success' | 'error', text: string) => {
-    setMessage({ type, text });
-    window.setTimeout(() => setMessage(null), 4000);
-  };
-
-  const load = async () => {
-    try {
-      const data = await api('/programs');
-      setPrograms(data.data || []);
-    } catch (e: any) {
-      notify('error', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const toBody = (f: typeof EMPTY_FORM) =>
-    JSON.stringify({
-      name: f.name.trim(),
-      reward: f.reward.trim(),
-      pointsRequired: Number(f.pointsRequired),
-      completeWithinDays: Number(f.completeWithinDays),
-      description: f.description.trim(),
-    });
-
-  const create = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const data = await api('/programs', { method: 'POST', body: toBody(form) });
-      notify('success', data.message);
-      setForm(EMPTY_FORM);
-      await load();
-    } catch (err: any) {
-      notify('error', err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-    setSaving(true);
-    try {
-      const data = await api(`/programs/${editing._id}`, { method: 'PUT', body: toBody(editForm) });
-      notify('success', data.message);
-      setEditing(null);
-      await load();
-    } catch (err: any) {
-      notify('error', err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remove = async (p: Program) => {
-    const members = p.memberCount || 0;
-    const warning = members
-      ? `Delete "${p.name}"?\n\n${members} customer(s) and all their points will also be deleted. This can't be undone.`
-      : `Delete "${p.name}"?`;
-    if (!window.confirm(warning)) return;
-    try {
-      const data = await api(`/programs/${p._id}`, { method: 'DELETE' });
-      notify('success', data.message);
-      await load();
-    } catch (err: any) {
-      notify('error', err.message);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {message && (
-        <div
-          role="status"
-          className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
-            message.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-          }`}
-        >
-          {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          {message.text}
-        </div>
-      )}
-
-      {/* Create */}
-      <form onSubmit={create} className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
-          <Plus className="h-5 w-5 text-purple-600" /> Add new loyalty program
-        </h3>
-        <ProgramForm value={form} onChange={setForm} />
-        <div className="mt-5 flex justify-end">
-          <button
-            type="submit"
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Create program
+      ) : loadError ? (
+        <div style={styles.errorBox}>
+          <span style={{ fontSize: 28 }}>⚠️</span>
+          <p style={styles.stateText}>{loadError}</p>
+          <button type="button" onClick={() => loadPrograms()} className="lm-btn-ghost" style={styles.cancelBtn}>
+            Try again
           </button>
         </div>
-      </form>
-
-      {/* List */}
-      <div>
-        <h3 className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900">
-          <Award className="h-5 w-5 text-purple-600" /> Your programs
-          <span className="text-sm font-normal text-slate-500">({programs.length})</span>
-        </h3>
-
-        {loading ? (
-          <div className="flex justify-center py-10 text-slate-400">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : programs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
-            No loyalty programs yet. Create your first one above.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {programs.map((p) => (
-              <div
-                key={p._id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setOpened(p)}
-                onKeyDown={(e) => e.key === 'Enter' && setOpened(p)}
-                className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-purple-300 hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-bold text-slate-900">{p.name}</p>
-                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => {
-                        setEditing(p);
-                        setEditForm(formFromProgram(p));
-                      }}
-                      title="Edit"
-                      className="rounded-lg p-1.5 text-slate-500 hover:bg-purple-50 hover:text-purple-700"
-                    >
-                      <Edit3 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => remove(p)}
-                      title="Delete"
-                      className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-700">
-                  <Gift className="h-4 w-4 text-purple-500" /> {p.reward}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
-                    <Star className="h-3 w-3" /> {p.pointsRequired} points
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-800">
-                    <CalendarClock className="h-3 w-3" /> {p.completeWithinDays} days
-                  </span>
-                </div>
-                {p.description && <p className="mt-2 line-clamp-2 text-xs text-slate-500">{p.description}</p>}
-
-                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-600">
-                  <span className="inline-flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5" /> {p.memberCount || 0} members
-                  </span>
-                  {(p.rewardReadyCount || 0) > 0 ? (
-                    <span className="font-semibold text-emerald-700">{p.rewardReadyCount} reward ready</span>
-                  ) : (
-                    <span className="text-purple-700">View members →</span>
-                  )}
-                </div>
+      ) : programs.length === 0 ? (
+        <div style={styles.emptyBox}>
+          <span style={{ fontSize: 34 }}>⭐</span>
+          <p style={styles.emptyTitle}>No loyalty programs yet</p>
+          <p style={styles.stateText}>
+            Create your first program. Customers can then join it from Create Bill or Pending Bill.
+          </p>
+          <button type="button" onClick={openAdd} className="lm-btn-primary" style={styles.addBtn}>
+            <span aria-hidden="true" style={styles.plus}>+</span>
+            Add New Program
+          </button>
+        </div>
+      ) : (
+        <div style={styles.grid}>
+          {programs.map((program) => (
+            <div key={programKey(program)} className="lm-program-card" style={styles.programCard}>
+              <div style={styles.programHead}>
+                <div style={styles.programIcon}>⭐</div>
+                <h3 style={styles.programName}>{program.programName || "Untitled program"}</h3>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Edit */}
-      {editing && (
-        <Overlay onClose={() => setEditing(null)}>
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <p className="text-lg font-bold text-slate-900">Edit program</p>
-            <button onClick={() => setEditing(null)} aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="overflow-auto p-5">
-            <ProgramForm value={editForm} onChange={setEditForm} />
-          </div>
-          <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-            <button onClick={() => setEditing(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
-              Cancel
-            </button>
-            <button
-              onClick={saveEdit}
-              disabled={saving}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
-            >
-              Save changes
-            </button>
-          </div>
-        </Overlay>
+              <div style={styles.metaList}>
+                <div style={styles.metaRow}>
+                  <span aria-hidden="true">🎁</span>
+                  <span>
+                    <span style={styles.metaLabel}>Reward:</span> {program.reward || "—"}
+                  </span>
+                </div>
+                {program.completeWithinDays ? (
+                  <div style={styles.metaRow}>
+                    <span aria-hidden="true">⏳</span>
+                    <span>Complete within {program.completeWithinDays} days</span>
+                  </div>
+                ) : null}
+              </div>
+
+              {program.description ? <p style={styles.programDesc}>{program.description}</p> : null}
+
+              <button
+                type="button"
+                onClick={() => openMembers(program)}
+                className="lm-btn-outline"
+                style={styles.viewBtn}
+              >
+                👥 View Members
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Members */}
-      {opened && <MembersModal program={opened} onClose={() => setOpened(null)} onChanged={load} notify={notify} />}
+      {/* CARD 1 — Add New Program */}
+      <Modal
+        open={showAdd}
+        onClose={closeAdd}
+        icon="⭐"
+        title="Add New Program"
+        subtitle="Create a loyalty program. Customers can join it from Create Bill or Pending Bill."
+      >
+        <form onSubmit={handleCreate} style={styles.form} noValidate>
+          <Field
+            id="lm-program-name"
+            label="Program Name"
+            icon="🏷️"
+            required
+            autoFocus
+            value={form.programName}
+            onChange={setField("programName")}
+            placeholder="e.g. Coffee Club 10-Points"
+          />
+          <Field
+            id="lm-reward"
+            label="Reward"
+            icon="🎁"
+            required
+            value={form.reward}
+            onChange={setField("reward")}
+            placeholder="e.g. Free Cappuccino"
+          />
+          <Field
+            id="lm-days"
+            label="Complete Within (Days)"
+            icon="⏳"
+            required
+            type="number"
+            min="1"
+            value={form.completeWithinDays}
+            onChange={setField("completeWithinDays")}
+            placeholder="30"
+          />
+          <Field
+            id="lm-description"
+            label="Description"
+            icon="📝"
+            multiline
+            rows={3}
+            value={form.description}
+            onChange={setField("description")}
+            placeholder="Campaign details or rules (optional)"
+          />
+
+          {formError && (
+            <div role="alert" style={styles.formError}>
+              ⚠️ {formError}
+            </div>
+          )}
+          <p style={styles.requiredNote}>* Required fields</p>
+
+          <div style={styles.modalButtons}>
+            <button type="button" onClick={closeAdd} disabled={saving} className="lm-btn-ghost" style={styles.cancelBtn}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="lm-btn-primary" style={styles.submitBtn}>
+              {saving && <span className="lm-spinner" />}
+              {saving ? "Saving…" : "Create Program"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* CARD 2 — View Members */}
+      <Modal
+        open={Boolean(activeProgram)}
+        onClose={closeMembers}
+        icon="👥"
+        title="Program Members"
+        subtitle={activeProgram ? activeProgram.programName : ""}
+        wide
+      >
+        {membersLoading ? (
+          <div style={styles.stateBox}>
+            <span className="lm-spinner lm-spinner-dark" style={{ margin: 0 }} />
+            Loading members…
+          </div>
+        ) : membersError ? (
+          <div role="alert" style={styles.formError}>
+            ⚠️ {membersError}
+          </div>
+        ) : (
+          <>
+            <div style={styles.statRow}>
+              <div style={styles.statChip}>
+                <span style={styles.statLabel}>Members</span>
+                <span style={styles.statValue}>{members.length}</span>
+              </div>
+              <div style={styles.statChip}>
+                <span style={styles.statLabel}>Active points</span>
+                <span style={styles.statValue}>{totalPoints}</span>
+              </div>
+            </div>
+
+            {members.length > 0 && (
+              <input
+                type="search"
+                className="lm-input"
+                style={{ ...styles.input, marginBottom: 14 }}
+                placeholder="Search by name or phone"
+                aria-label="Search members"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+              />
+            )}
+
+            {members.length === 0 ? (
+              <div style={styles.stateBox}>No customers have joined this program yet.</div>
+            ) : filteredMembers.length === 0 ? (
+              <div style={styles.stateBox}>No members match your search.</div>
+            ) : (
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr style={styles.theadRow}>
+                      <th style={styles.th}>Customer</th>
+                      <th style={{ ...styles.th, textAlign: "right" }}>Points</th>
+                      <th style={{ ...styles.th, textAlign: "right" }}>Lifetime</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMembers.map((m) => (
+                      <tr key={m._id || m.customerPhone} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.memberName}>{m.customerName || "Unnamed customer"}</div>
+                          <div style={styles.memberPhone}>{m.customerPhone || "—"}</div>
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "right" }}>
+                          <span style={styles.pointsBadge}>{m.points ?? 0}</span>
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "right", color: "#64748b" }}>
+                          {m.totalPointsEarned ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        <div style={{ ...styles.modalButtons, marginTop: 18 }}>
+          <button type="button" onClick={closeMembers} className="lm-btn-ghost" style={styles.cancelBtn}>
+            Close
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Modal — always centered on the SCREEN (not on the page).
+   It is rendered straight into <body>, so no parent element can push
+   it off-center, and the page behind is frozen while it is open.
+   ═══════════════════════════════════════════════════════════════════ */
+function Modal({ open, onClose, icon, title, subtitle, wide = false, children }) {
+  const onCloseRef = useRef(onClose);
+  const pressStartedOnOverlay = useRef(false);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKey = (e) => {
+      if (e.key === "Escape") onCloseRef.current();
+    };
+    document.addEventListener("keydown", handleKey);
+
+    // Freeze the page behind the card without letting the layout jump.
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="lm-overlay"
+      style={styles.overlay}
+      onMouseDown={(e) => {
+        pressStartedOnOverlay.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        // close only when the press AND the release both happened on the dark area
+        if (pressStartedOnOverlay.current && e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="lm-dialog lm-pop"
+        style={{ ...styles.dialog, ...(wide ? styles.dialogWide : null) }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div style={styles.dialogAccent} />
+        <button type="button" onClick={onClose} className="lm-close" style={styles.closeBtn} aria-label="Close">
+          ✕
+        </button>
+        <div className="lm-scroll" style={styles.dialogScroll}>
+          <div style={styles.dialogHeader}>
+            {icon && <div style={styles.dialogIcon}>{icon}</div>}
+            <div style={{ minWidth: 0 }}>
+              <h3 style={styles.dialogTitle}>{title}</h3>
+              {subtitle && <p style={styles.dialogSubtitle}>{subtitle}</p>}
+            </div>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function Toast({ toast }) {
+  if (!toast.text) return null;
+  const ok = toast.type === "success";
+  return createPortal(
+    <div
+      role={ok ? "status" : "alert"}
+      className="lm-toast"
+      style={{
+        ...styles.toast,
+        backgroundColor: ok ? "#f0fdf4" : "#fef2f2",
+        color: ok ? "#166534" : "#991b1b",
+        borderColor: ok ? "#bbf7d0" : "#fecaca",
+      }}
+    >
+      <span aria-hidden="true">{ok ? "✨" : "⚠️"}</span>
+      {toast.text}
+    </div>,
+    document.body
+  );
+}
+
+function Field({ id, label, icon, required = false, multiline = false, ...inputProps }) {
+  const Control = multiline ? "textarea" : "input";
+  return (
+    <div style={styles.fieldWrap}>
+      <label htmlFor={id} style={styles.fieldLabel}>
+        {icon && (
+          <span aria-hidden="true" style={{ marginRight: 6 }}>
+            {icon}
+          </span>
+        )}
+        {label}
+        {required && <span style={styles.requiredMark}> *</span>}
+      </label>
+      <Control
+        id={id}
+        className="lm-input"
+        style={{ ...styles.input, ...(multiline ? styles.textarea : null) }}
+        {...inputProps}
+      />
+    </div>
+  );
+}
+
+function LoyaltyStyles() {
+  return (
+    <style>{`
+      .lm-btn-primary { transition: filter 0.15s ease, opacity 0.15s ease; }
+      .lm-btn-primary:hover:not(:disabled) { filter: brightness(1.07); }
+      .lm-btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+
+      .lm-btn-ghost { transition: background-color 0.15s ease; }
+      .lm-btn-ghost:hover:not(:disabled) { background-color: #f8fafc; }
+      .lm-btn-ghost:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .lm-btn-outline { transition: background-color 0.15s ease, border-color 0.15s ease; }
+      .lm-btn-outline:hover { background-color: #f3e8ff; border-color: #d8b4fe; }
+
+      .lm-btn-primary:focus-visible,
+      .lm-btn-ghost:focus-visible,
+      .lm-btn-outline:focus-visible,
+      .lm-close:focus-visible { outline: 2px solid #9333ea; outline-offset: 2px; }
+
+      .lm-input { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+      .lm-input:focus { border-color: #9333ea !important; box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.12); }
+
+      .lm-program-card { transition: box-shadow 0.15s ease, transform 0.15s ease; }
+      .lm-program-card:hover { box-shadow: 0 8px 24px rgba(147, 51, 234, 0.1); transform: translateY(-2px); }
+
+      .lm-close { transition: background-color 0.15s ease, color 0.15s ease; }
+      .lm-close:hover { background-color: #f1f5f9; color: #0f172a; }
+
+      .lm-spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #ffffff;
+        border-radius: 50%;
+        margin-right: 8px;
+        vertical-align: -2px;
+        animation: lmSpin 0.6s linear infinite;
+      }
+      .lm-spinner-dark { border-color: rgba(147, 51, 234, 0.25); border-top-color: #9333ea; }
+      @keyframes lmSpin { to { transform: rotate(360deg); } }
+
+      .lm-overlay { animation: lmFade 0.18s ease; }
+      @keyframes lmFade { from { opacity: 0; } to { opacity: 1; } }
+
+      .lm-pop { animation: lmPop 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+      @keyframes lmPop {
+        from { opacity: 0; transform: translateY(10px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      .lm-toast { animation: lmToast 0.25s ease; }
+      @keyframes lmToast {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* The card is never taller than the screen. If it is, it scrolls inside itself. */
+      .lm-dialog { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); }
+
+      @media (max-width: 480px) {
+        .lm-overlay { padding: 12px !important; }
+        .lm-dialog { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
+        .lm-scroll { padding: 22px 18px 22px !important; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lm-overlay, .lm-pop, .lm-toast { animation: none !important; }
+        .lm-btn-primary, .lm-btn-ghost, .lm-btn-outline, .lm-input, .lm-program-card, .lm-close { transition: none !important; }
+      }
+    `}</style>
+  );
+}
+
+const FONT = "'Segoe UI', Roboto, -apple-system, sans-serif";
+
+const styles = {
+  wrap: { display: "flex", flexDirection: "column", gap: 20 },
+
+  /* top bar */
+  toolbar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  toolbarTitle: { fontSize: 15, fontWeight: 700, color: "#0f172a" },
+  toolbarSub: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  addBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "12px 20px",
+    borderRadius: 12,
+    border: "none",
+    backgroundColor: "#9333ea",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    boxShadow: "0 4px 12px rgba(147, 51, 234, 0.25)",
+  },
+  plus: { fontSize: 18, fontWeight: 700, lineHeight: 1 },
+
+  /* loading / empty / error boxes */
+  stateBox: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "40px 20px",
+    textAlign: "center",
+    color: "#64748b",
+    fontSize: 14,
+    fontWeight: 500,
+    backgroundColor: "#faf5ff",
+    border: "1px dashed #d8b4fe",
+    borderRadius: 16,
+  },
+  emptyBox: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    padding: "44px 20px",
+    textAlign: "center",
+    backgroundColor: "#faf5ff",
+    border: "1px dashed #d8b4fe",
+    borderRadius: 18,
+  },
+  errorBox: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    padding: "36px 20px",
+    textAlign: "center",
+    backgroundColor: "#fef2f2",
+    border: "1px solid #fecaca",
+    borderRadius: 18,
+  },
+  emptyTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" },
+  stateText: { margin: "0 0 8px", maxWidth: 380, fontSize: 13, lineHeight: 1.5, color: "#64748b" },
+
+  /* program cards */
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+    gap: 16,
+  },
+  programCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: 20,
+    backgroundColor: "#faf5ff",
+    border: "1px solid #f3e8ff",
+    borderRadius: 18,
+  },
+  programHead: { display: "flex", alignItems: "center", gap: 12 },
+  programIcon: {
+    flexShrink: 0,
+    width: 40,
+    height: 40,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 20,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    border: "1px solid #e9d5ff",
+  },
+  programName: { margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a", wordBreak: "break-word" },
+  metaList: { display: "flex", flexDirection: "column", gap: 6 },
+  metaRow: { display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, lineHeight: 1.4, color: "#475569" },
+  metaLabel: { fontWeight: 700, color: "#0f172a" },
+  programDesc: { margin: 0, fontSize: 13, lineHeight: 1.5, color: "#64748b", wordBreak: "break-word" },
+  viewBtn: {
+    marginTop: "auto",
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #e9d5ff",
+    backgroundColor: "#ffffff",
+    color: "#7e22ce",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+
+  /* toast */
+  toast: {
+    position: "fixed",
+    top: 20,
+    left: 0,
+    right: 0,
+    margin: "0 auto",
+    width: "max-content",
+    maxWidth: "calc(100% - 32px)",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "14px 18px",
+    borderRadius: 14,
+    border: "1px solid",
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: 500,
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+    zIndex: 10000,
+  },
+
+  /* modal (card) */
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    display: "flex",
+    padding: 24,
+    overflowY: "auto",
+    backgroundColor: "rgba(15, 23, 42, 0.62)",
+    backdropFilter: "blur(4px)",
+    fontFamily: FONT,
+    zIndex: 9999,
+  },
+  dialog: {
+    position: "relative",
+    margin: "auto",
+    width: "100%",
+    maxWidth: 460,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.35)",
+  },
+  dialogWide: { maxWidth: 700 },
+  dialogAccent: {
+    height: 4,
+    flexShrink: 0,
+    background: "linear-gradient(90deg, #9333ea, #c026d3)",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 30,
+    height: 30,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    border: "1px solid #e2e8f0",
+    backgroundColor: "#f8fafc",
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1,
+    cursor: "pointer",
+    zIndex: 2,
+  },
+  dialogScroll: {
+    padding: "26px 30px 28px",
+    overflowY: "auto",
+    flex: "1 1 auto",
+    minHeight: 0,
+  },
+  dialogHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 14,
+    marginBottom: 22,
+    paddingRight: 34,
+  },
+  dialogIcon: {
+    flexShrink: 0,
+    width: 44,
+    height: 44,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 21,
+    borderRadius: 13,
+    background: "linear-gradient(135deg, #f3e8ff, #fae8ff)",
+    border: "1px solid #e9d5ff",
+  },
+  dialogTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.01em" },
+  dialogSubtitle: { margin: "4px 0 0", fontSize: 13, lineHeight: 1.45, color: "#64748b" },
+
+  /* form */
+  form: { display: "flex", flexDirection: "column", gap: 16 },
+  fieldWrap: { display: "flex", flexDirection: "column", gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: 600, color: "#334155" },
+  requiredMark: { color: "#dc2626", fontWeight: 700 },
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "13px 16px",
+    borderRadius: 12,
+    border: "1px solid #cbd5e1",
+    backgroundColor: "#ffffff",
+    color: "#0f172a",
+    fontSize: 14,
+    fontFamily: "inherit",
+    outline: "none",
+  },
+  textarea: { resize: "vertical", minHeight: 84, lineHeight: 1.5 },
+  requiredNote: { margin: 0, fontSize: 12, color: "#94a3b8" },
+  formError: {
+    padding: "10px 14px",
+    borderRadius: 12,
+    backgroundColor: "#fef2f2",
+    border: "1px solid #fecaca",
+    color: "#991b1b",
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  modalButtons: { display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 6 },
+  cancelBtn: {
+    padding: "12px 18px",
+    borderRadius: 12,
+    border: "1px solid #e2e8f0",
+    backgroundColor: "#ffffff",
+    color: "#475569",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  submitBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px 20px",
+    borderRadius: 12,
+    border: "none",
+    backgroundColor: "#9333ea",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    boxShadow: "0 4px 12px rgba(147, 51, 234, 0.25)",
+  },
+
+  /* members card */
+  statRow: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 },
+  statChip: {
+    flex: "1 1 140px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 16px",
+    backgroundColor: "#faf5ff",
+    border: "1px solid #f3e8ff",
+    borderRadius: 14,
+  },
+  statLabel: { fontSize: 12, fontWeight: 700, color: "#7e22ce", textTransform: "uppercase", letterSpacing: 0.5 },
+  statValue: { fontSize: 18, fontWeight: 800, color: "#0f172a" },
+  tableWrap: { overflowX: "auto", border: "1px solid #f1f5f9", borderRadius: 14 },
+  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 14 },
+  theadRow: {
+    backgroundColor: "#faf5ff",
+    color: "#475569",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  th: { padding: "12px 14px", fontWeight: 700 },
+  tr: { borderTop: "1px solid #f1f5f9" },
+  td: { padding: "12px 14px", color: "#0f172a", verticalAlign: "middle" },
+  memberName: { fontWeight: 600 },
+  memberPhone: { marginTop: 2, fontSize: 12, color: "#64748b" },
+  pointsBadge: {
+    display: "inline-block",
+    padding: "4px 10px",
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 700,
+    backgroundColor: "#f3e8ff",
+    color: "#7e22ce",
+    border: "1px solid #e9d5ff",
+  },
+};
