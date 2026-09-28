@@ -271,7 +271,9 @@ function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
 <meta charset="utf-8" />
 <title>Kitchen Ticket</title>
 <style>
-  @page { size: 80mm auto; margin: 0; }
+  /* Real paper size is set just before printing (80mm x ticket length).
+     Chrome ignores "80mm auto", which printed on A4/Letter = blank ticket. */
+  @page { margin: 0; }
   * { 
     box-sizing: border-box; 
     -webkit-print-color-adjust: exact; 
@@ -279,8 +281,8 @@ function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
   body {
     font-family: 'Courier New', Courier, monospace;
     width: 72mm;
-    margin: 0 auto;
-    padding: 4mm 0;
+    margin: 0;            /* left edge: stays on an 80mm roll whatever paper is selected */
+    padding: 4mm 2mm;
     color: #000000;
     background: #ffffff;
     font-weight: 900; /* Forces maximum black fill on thermal heads */
@@ -390,21 +392,23 @@ function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
 }
 
 // Prints via a hidden iframe rather than window.open, so no new tab/window
-// ever appears — the ticket just goes straight to the print dialog/printer.
+// ever appears - the ticket just goes straight to the printer.
 function autoPrintOrder(order: Order, isUpdate: boolean = false) {
   const iframe = document.createElement('iframe');
+  // Real size but off-screen. A 0x0 or hidden frame prints a BLANK page in some browsers.
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = '80mm';
+  iframe.style.height = '200mm';
   iframe.style.border = '0';
   iframe.setAttribute('aria-hidden', 'true');
   document.body.appendChild(iframe);
 
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    document.body.removeChild(iframe);
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) {
+    iframe.remove();
     return;
   }
 
@@ -412,29 +416,37 @@ function autoPrintOrder(order: Order, isUpdate: boolean = false) {
   doc.write(buildTicketHtml(order, isUpdate));
   doc.close();
 
+  let removed = false;
   const cleanup = () => {
-    window.setTimeout(() => {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 1000);
+    if (removed) return;
+    removed = true;
+    // Wait before removing: removing the frame too early can cancel the print job.
+    window.setTimeout(() => iframe.remove(), 3000);
   };
 
-  // Give the iframe a tick to lay out the doc before invoking print.
-  const win = iframe.contentWindow;
-  if (win) {
-    win.onafterprint = cleanup;
-    window.setTimeout(() => {
-      try {
-        win.focus();
-        win.print();
-      } catch {
-        cleanup();
-      }
-      // Fallback cleanup in case onafterprint never fires (some browsers).
-      window.setTimeout(cleanup, 5000);
-    }, 250);
-  } else {
-    cleanup();
-  }
+  const print = async () => {
+    try {
+      // Make sure fonts are ready so the text is actually drawn
+      if (doc.fonts?.ready) await doc.fonts.ready;
+
+      // Tell the printer the exact paper: 80mm wide, as long as the ticket
+      const heightMm = Math.ceil((doc.body.scrollHeight * 25.4) / 96) + 6;
+      const pageStyle = doc.createElement('style');
+      pageStyle.textContent = `@page { size: 80mm ${heightMm}mm; margin: 0; }`;
+      doc.head.appendChild(pageStyle);
+
+      win.onafterprint = cleanup;
+      win.focus();
+      win.print();
+    } catch (err) {
+      console.error('Kitchen ticket print failed:', err);
+    }
+    // Fallback in case onafterprint never fires
+    window.setTimeout(cleanup, 60000);
+  };
+
+  // Give the frame a moment to lay out before printing
+  window.setTimeout(print, 300);
 }
 
 // ==========================================
