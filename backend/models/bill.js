@@ -45,7 +45,7 @@ const restaurantBillingSchema = mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ["Cash", "eSewa", "Khalti", "IMEPay", "Card", "Due","Pending","Split"],
+        enum: ["Cash", "eSewa", "Khalti", "Fonepay", "IMEPay",  "Card", "Due","Pending","Split"],
         default: "Cash",
     },
     cashPaidMoney: {
@@ -60,7 +60,7 @@ const restaurantBillingSchema = mongoose.Schema({
         type: Number,
         default: 0,
     },
-    imePayPaidMoney: {
+    fonepayPaidMoney: {
         type: Number,
         default: 0,
     },

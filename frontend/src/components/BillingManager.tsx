@@ -62,7 +62,7 @@ interface RawBill {
   cashPaidMoney?: number;
   eSewaPaidMoney?: number;
   khaltiPaidMoney?: number;
-  imePayPaidMoney?: number;
+fonepayPaidMoney?: number;
   date: string;
   items: RawBillItem[];
   subtotal: number;
@@ -85,7 +85,7 @@ function getPaidBreakdown(bill: RawBill): { label: string; amount: number }[] {
     { label: 'Cash', amount: bill.cashPaidMoney ?? 0 },
     { label: 'eSewa', amount: bill.eSewaPaidMoney ?? 0 },
     { label: 'Khalti', amount: bill.khaltiPaidMoney ?? 0 },
-    { label: 'IMEPay', amount: bill.imePayPaidMoney ?? 0 },
+    { label: 'Fonepay', amount: bill.fonepayPaidMoney ?? 0 },
   ].filter((p) => p.amount > 0);
 }
 
@@ -422,7 +422,7 @@ export default function BillingManager({
   const cashToday = todaysInvoices.reduce((sum, s) => sum + (s.cashPaidMoney || 0), 0);
   const esewaToday = todaysInvoices.reduce((sum, s) => sum + (s.eSewaPaidMoney || 0), 0);
   const khaltiToday = todaysInvoices.reduce((sum, s) => sum + (s.khaltiPaidMoney || 0), 0);
-  const imeToday = todaysInvoices.reduce((sum, s) => sum + (s.imePayPaidMoney || 0), 0);
+  const fonepayToday = todaysInvoices.reduce((sum, s) => sum + (s.fonepayPaidMoney || 0), 0);
 
   const totalTaxableToday = todaysInvoices.reduce((sum, s) => sum + (s.taxableAmount || 0), 0);
   const totalVatToday = todaysInvoices.reduce((sum, s) => sum + (s.vatCollected || 0), 0);
@@ -502,11 +502,11 @@ export default function BillingManager({
             <div className="absolute top-0 right-0 w-20 h-20 bg-rose-400/10 rounded-full blur-xl pointer-events-none group-hover:scale-115 transition-transform" />
             <div className="flex items-center justify-between mb-2 relative z-10">
               <span className="text-[11px] uppercase font-extrabold text-rose-700 tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span> IME Pay Total
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span> Fonepay Total
               </span>
               <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-md text-[9px] font-extrabold">Gateway</span>
             </div>
-            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(imeToday)}</p>
+            <p className="font-mono font-black text-slate-900 text-xl tracking-tight relative z-10">NPR {money(fonepayToday)}</p>
             <div className="mt-1.5 text-[10px] text-rose-700/80 font-semibold relative z-10 flex items-center gap-1">
               <Sparkles className="h-3 w-3" /> Secure transactions
             </div>
@@ -653,7 +653,7 @@ export default function BillingManager({
                             invoice.paymentMethod === 'Cash' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                             invoice.paymentMethod === 'eSewa' ? 'bg-[#60bb46]/10 text-[#3a7c28] border-[#60bb46]/30' :
                             invoice.paymentMethod === 'Khalti' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                            invoice.paymentMethod === 'IMEPay' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            invoice.paymentMethod === 'Fonepay' ? 'bg-rose-50 text-rose-700 border-rose-200' :
                             invoice.paymentMethod === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                             'bg-indigo-50 text-indigo-700 border-indigo-200'
                           }`}>

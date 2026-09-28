@@ -25,7 +25,7 @@ export interface Sale {
   vatRate: number;
   vatAmount: number;
   grandTotal: number;
-  paymentMethod: 'Cash' | 'eSewa' | 'Khalti' | 'IMEPay' | 'Card' | 'Due' | 'Pending' | 'Split';
+  paymentMethod: 'Cash' | 'eSewa' | 'Khalti' | 'Fonepay' | 'Card' | 'Due' | 'Pending' | 'Split';
   paymentStatus?: string;
   createdAt: string;
   refundReason?: string;

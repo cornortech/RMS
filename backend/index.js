@@ -849,7 +849,7 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             cashPaidMoney: parseNum(getValue(formData.cashPaidMoney, 0)),
             eSewaPaidMoney: parseNum(getValue(formData.eSewaPaidMoney, 0)),
             khaltiPaidMoney: parseNum(getValue(formData.khaltiPaidMoney, 0)),
-            imePayPaidMoney: parseNum(getValue(formData.imePayPaidMoney, 0)),
+            fonepayPaidMoney: parseNum(getValue(formData.fonepayPaidMoney, 0)),
             date: formData.date ? new Date(formData.date) : new Date(),
             items: (formData.items || []).map(i => ({
                 itemName: i.itemName || "Unknown Item",
@@ -905,7 +905,7 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             cashPaidMoney: bill.cashPaidMoney,
             eSewaPaidMoney: bill.eSewaPaidMoney,
             khaltiPaidMoney: bill.khaltiPaidMoney,
-            imePayPaidMoney: bill.imePayPaidMoney,
+            fonepayPaidMoney: bill.fonepayPaidMoney,
             date: bill.date,
             items: bill.items,
             subtotal: bill.subtotal,
@@ -934,14 +934,14 @@ app.get("/api/bills", requireAuth, async (req, res) => {
 app.patch("/api/bills/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
-        const { paymentMethod, cashPaidMoney, eSewaPaidMoney, khaltiPaidMoney, imePayPaidMoney } = req.body;
+        const { paymentMethod, cashPaidMoney, eSewaPaidMoney, khaltiPaidMoney, fonepayPaidMoney } = req.body;
 
         const updateFields = {};
         if (paymentMethod !== undefined) updateFields.paymentMethod = paymentMethod;
         if (cashPaidMoney !== undefined) updateFields.cashPaidMoney = parseNum(cashPaidMoney);
         if (eSewaPaidMoney !== undefined) updateFields.eSewaPaidMoney = parseNum(eSewaPaidMoney);
         if (khaltiPaidMoney !== undefined) updateFields.khaltiPaidMoney = parseNum(khaltiPaidMoney);
-        if (imePayPaidMoney !== undefined) updateFields.imePayPaidMoney = parseNum(imePayPaidMoney);
+       if (fonepayPaidMoney !== undefined) updateFields.fonepayPaidMoney = parseNum(fonepayPaidMoney);
 
         // Ensure users can only update bills belonging to their restaurant (unless admin)
         const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };

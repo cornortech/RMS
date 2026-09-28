@@ -161,11 +161,11 @@ const PAYMENT_METHODS: MethodConfig[] = [
     },
   },
   {
-    id: 'IMEPay',
-    label: 'IME Pay',
+    id: 'Fonepay',
+    label: 'Fonepay',
     icon: CreditCard,
     digital: true,
-    hint: { en: 'Customer scans the IME Pay QR', ne: 'IME Pay QR स्क्यान' },
+    hint: { en: 'Customer scans the Fonepay QR', ne: 'Fonepay QR स्क्यान' },
     style: {
       activeCard: 'border-rose-400 bg-rose-50/80',
       iconActive: 'bg-rose-600 text-white',
@@ -1952,7 +1952,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     const cashTotal = paymentSplit.Cash ?? 0;
     const eSewaTotal = paymentSplit.eSewa ?? 0;
     const khaltiTotal = paymentSplit.Khalti ?? 0;
-    const imePayTotal = paymentSplit.IMEPay ?? 0;
+    const fonepayTotal = paymentSplit.Fonepay ?? 0;
 
     try {
       const results = await Promise.allSettled(
@@ -1968,7 +1968,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
               cashPaidMoney: Number((cashTotal * billShare).toFixed(2)),
               eSewaPaidMoney: Number((eSewaTotal * billShare).toFixed(2)),
               khaltiPaidMoney: Number((khaltiTotal * billShare).toFixed(2)),
-              imePayPaidMoney: Number((imePayTotal * billShare).toFixed(2)),
+              fonepayPaidMoney: Number((fonepayTotal * billShare).toFixed(2)),
             }),
           }).then(async (res) => {
             const data = await res.json();
@@ -2038,7 +2038,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         { label: 'Cash', amount: cashTotal },
         { label: 'eSewa', amount: eSewaTotal },
         { label: 'Khalti', amount: khaltiTotal },
-        { label: 'IMEPay', amount: imePayTotal },
+        { label: 'Fonepay', amount: fonepayTotal },
       ].filter((p) => p.amount > 0);
 
       setAllBills((prev) => prev.filter((b) => !groupBeingPaid.billIds.includes(b._id)));

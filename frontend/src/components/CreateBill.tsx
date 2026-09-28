@@ -119,7 +119,7 @@ interface MethodConfig {
   style: MethodStyle;
 }
 
-// Brand-inspired colours: eSewa green, Khalti purple, IME Pay red
+// Brand-inspired colours: eSewa green, Khalti purple, Fonepay red
 const PAYMENT_METHODS: MethodConfig[] = [
   {
     id: 'Cash',
@@ -167,11 +167,11 @@ const PAYMENT_METHODS: MethodConfig[] = [
     },
   },
   {
-    id: 'IMEPay',
-    label: 'IME Pay',
+    id: 'Fonepay',
+    label: 'Fonepay',
     icon: CreditCard,
     digital: true,
-    hint: { en: 'Customer scans the IME Pay QR', ne: 'IME Pay QR स्क्यान' },
+    hint: { en: 'Customer scans the Fonepay QR', ne: 'Fonepay QR स्क्यान' },
     style: {
       activeCard: 'border-rose-400 bg-rose-50/80',
       iconActive: 'bg-rose-600 text-white',
@@ -1424,7 +1424,7 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
     { label: 'Cash', amount: bill?.cashPaidMoney ?? 0 },
     { label: 'eSewa', amount: bill?.eSewaPaidMoney ?? 0 },
     { label: 'Khalti', amount: bill?.khaltiPaidMoney ?? 0 },
-    { label: 'IMEPay', amount: bill?.imePayPaidMoney ?? 0 },
+    { label: 'Fonepay', amount: bill?.fonepayPaidMoney ?? 0 },
   ].filter((p) => p.amount > 0);
 
   return (
@@ -2030,7 +2030,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       cashPaidMoney: paymentSplit.Cash ?? 0,
       eSewaPaidMoney: paymentSplit.eSewa ?? 0,
       khaltiPaidMoney: paymentSplit.Khalti ?? 0,
-      imePayPaidMoney: paymentSplit.IMEPay ?? 0,
+     fonepayPaidMoney: paymentSplit.Fonepay ?? 0,
       date: new Date().toISOString(),
       items: billItems,
       subtotal,

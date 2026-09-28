@@ -4,17 +4,17 @@ import { Loader2, QrCode, RefreshCw, AlertTriangle } from 'lucide-react';
 const API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
 /** Wallet ids used by CreateBill's payment methods */
-export type WalletId = 'eSewa' | 'Khalti' | 'IMEPay';
+export type WalletId = 'eSewa' | 'Khalti' | 'Fonepay';
 
 /** Provider names the /qr/dynamic endpoint expects */
-type ProviderName =  'eSewa' | 'Khalti' | 'IME Pay';
+type ProviderName =  'eSewa' | 'Khalti' | 'Fonepay';
 
-const PROVIDERS: ProviderName[] = [ 'eSewa', 'Khalti', 'IME Pay'];
+const PROVIDERS: ProviderName[] = [ 'eSewa', 'Khalti', 'Fonepay'];
 
 const WALLET_TO_PROVIDER: Record<WalletId, ProviderName> = {
   eSewa: 'eSewa',
   Khalti: 'Khalti',
-  IMEPay: 'IME Pay',
+  Fonepay: 'Fonepay',
 };
 
 // Brand colours for the frame, label and loader
@@ -22,7 +22,7 @@ const PROVIDER_STYLE: Record<ProviderName, { color: string; soft: string; label:
  
   eSewa: { color: '#60BB46', soft: '#EEF8EB', label: 'eSewa' },
   Khalti: { color: '#5C2D91', soft: '#F1EAF8', label: 'Khalti' },
-  'IME Pay': { color: '#E11D48', soft: '#FDECF0', label: 'IME Pay' },
+  'Fonepay': { color: '#E11D48', soft: '#FDECF0', label: 'Fonepay' },
 };
 
 interface BillQRProps {

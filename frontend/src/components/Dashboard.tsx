@@ -446,7 +446,7 @@ const PAY_META: Record<string, string> = {
   Cash: '#059669', // green
   eSewa: '#60bb46', // eSewa light green
   Khalti: '#5c2d91', // Khalti purple
-  IMEPay: '#ec1c24', // IME Pay red
+  Fonepay: '#ec1c24', // Fonepay red
   Card: '#2563eb', // blue
   Due: '#f59e0b', // amber
   Pending: '#94a3b8', // grey
