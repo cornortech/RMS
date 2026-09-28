@@ -310,19 +310,22 @@ function timeAgo(iso: string, lang: Lang): { text: string; hours: number } {
 // GROUPED PENDING "CUSTOMER"
 // ==========================================
 
-interface GroupedPending {
-  key: string;
-  billTo: string;
+interface BillSummary {
   billIds: string[];
   orderIds: string[];
   bills: Bill[];
-  tableNumbers: string[];
   mergedItems: BillItem[];
   subtotal: number;
   discount: number;
   taxableAmount: number;
   vatCollected: number;
   grandTotal: number;
+}
+
+interface GroupedPending extends BillSummary {
+  key: string;
+  billTo: string;
+  tableNumbers: string[];
   earliestDate: string;
   restaurantId: string;
   restaurantName: string;
@@ -330,9 +333,36 @@ interface GroupedPending {
   panOrVat?: string;
 }
 
+// Aggregates any set of bills (a whole customer, or just one picked bill) into totals + merged items.
+function summarizeBills(bills: Bill[]): BillSummary {
+  const itemMap = new Map<string, BillItem>();
+  for (const bill of bills) {
+    for (const item of bill.items || []) {
+      const itemKey = `${item.itemName}__${item.rate}`;
+      if (itemMap.has(itemKey)) {
+        const existing = itemMap.get(itemKey)!;
+        existing.quantity += item.quantity;
+        existing.total += item.total;
+      } else {
+        itemMap.set(itemKey, { ...item });
+      }
+    }
+  }
+  return {
+    billIds: bills.map((b) => b._id),
+    orderIds: Array.from(new Set(bills.map((b) => b.orderId).filter(Boolean) as string[])),
+    bills,
+    mergedItems: Array.from(itemMap.values()),
+    subtotal: bills.reduce((s, b) => s + (b.subtotal || 0), 0),
+    discount: bills.reduce((s, b) => s + (b.discount || 0), 0),
+    taxableAmount: bills.reduce((s, b) => s + (b.taxableAmount ?? b.subtotal ?? 0), 0),
+    vatCollected: bills.reduce((s, b) => s + (b.vatCollected || 0), 0),
+    grandTotal: bills.reduce((s, b) => s + (b.grandTotal || 0), 0),
+  };
+}
+
 function groupPendingBills(bills: Bill[]): GroupedPending[] {
   const groups = new Map<string, Bill[]>();
-
   for (const bill of bills) {
     const key = normalizeName(bill.billTo);
     if (!groups.has(key)) groups.set(key, []);
@@ -340,42 +370,16 @@ function groupPendingBills(bills: Bill[]): GroupedPending[] {
   }
 
   const result: GroupedPending[] = [];
-
-  groups.forEach((groupBills, key) => {
-    const itemMap = new Map<string, BillItem>();
-
-    for (const bill of groupBills) {
-      for (const item of bill.items || []) {
-        const itemKey = `${item.itemName}__${item.rate}`;
-        if (itemMap.has(itemKey)) {
-          const existing = itemMap.get(itemKey)!;
-          existing.quantity += item.quantity;
-          existing.total += item.total;
-        } else {
-          itemMap.set(itemKey, { ...item });
-        }
-      }
-    }
-
+  groups.forEach((groupBills) => {
     const sortedByDate = [...groupBills].sort(
-      (a, b) =>
-        new Date(a.date || a.createdAt || 0).getTime() -
-        new Date(b.date || b.createdAt || 0).getTime()
+      (a, b) => new Date(a.date || a.createdAt || 0).getTime() - new Date(b.date || b.createdAt || 0).getTime()
     );
-
+    const summary = summarizeBills(sortedByDate);
     result.push({
-      key,
+      key: normalizeName(groupBills[0].billTo),
       billTo: groupBills[0].billTo,
-      billIds: groupBills.map((b) => b._id),
-      orderIds: Array.from(new Set(groupBills.map((b) => b.orderId).filter(Boolean) as string[])),
-      bills: sortedByDate,
+      ...summary,
       tableNumbers: Array.from(new Set(groupBills.map((b) => b.tableNumber).filter(Boolean) as string[])),
-      mergedItems: Array.from(itemMap.values()),
-      subtotal: groupBills.reduce((s, b) => s + (b.subtotal || 0), 0),
-      discount: groupBills.reduce((s, b) => s + (b.discount || 0), 0),
-      taxableAmount: groupBills.reduce((s, b) => s + (b.taxableAmount ?? b.subtotal ?? 0), 0),
-      vatCollected: groupBills.reduce((s, b) => s + (b.vatCollected || 0), 0),
-      grandTotal: groupBills.reduce((s, b) => s + (b.grandTotal || 0), 0),
       earliestDate: sortedByDate[0]?.date || sortedByDate[0]?.createdAt || new Date().toISOString(),
       restaurantId: groupBills[0].restaurantId,
       restaurantName: groupBills[0].restaurantName,
@@ -383,7 +387,6 @@ function groupPendingBills(bills: Bill[]): GroupedPending[] {
       panOrVat: groupBills[0].panOrVat,
     });
   });
-
   return result;
 }
 
@@ -430,6 +433,84 @@ function StatTile({
 // ==========================================
 // PENDING CUSTOMER CARD
 // ==========================================
+
+function PendingCustomersTable({
+  groups,
+  onSelect,
+  lang,
+}: {
+  groups: GroupedPending[];
+  onSelect: (group: GroupedPending) => void;
+  lang: Lang;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-100">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+          <tr>
+            <th className="px-5 py-3 text-left font-semibold">{lang === 'en' ? 'Customer' : 'ग्राहक'}</th>
+            <th className="px-3 py-3 text-left font-semibold">{lang === 'en' ? 'Table(s)' : 'टेबल'}</th>
+            <th className="px-3 py-3 text-center font-semibold">{lang === 'en' ? 'Bills' : 'बिल'}</th>
+            <th className="px-3 py-3 text-left font-semibold">{lang === 'en' ? 'Waiting since' : 'देखि बाँकी'}</th>
+            <th className="px-5 py-3 text-right font-semibold">{lang === 'en' ? 'Amount due' : 'तिर्नुपर्ने'}</th>
+            <th className="px-5 py-3" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {groups.map((group) => {
+            const age = timeAgo(group.earliestDate, lang);
+            const isOld = age.hours >= 24;
+            const isStale = age.hours >= 6 && !isOld;
+            return (
+              <tr
+                key={group.key}
+                onClick={() => onSelect(group)}
+                className="cursor-pointer transition-colors hover:bg-purple-50/50"
+              >
+                <td className="px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${gradientFor(
+                        group.billTo
+                      )} text-xs font-extrabold text-white`}
+                    >
+                      {initials(group.billTo)}
+                    </span>
+                    <span className="font-semibold text-slate-900">{group.billTo}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-3.5 font-mono text-xs text-slate-500">
+                  {group.tableNumbers.length ? group.tableNumbers.join(', ') : '—'}
+                </td>
+                <td className="px-3 py-3.5 text-center">
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                    {group.billIds.length}
+                  </span>
+                </td>
+                <td className="px-3 py-3.5">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                      isOld ? 'bg-rose-50 text-rose-600' : isStale ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500'
+                    }`}
+                  >
+                    <Clock className="h-2.5 w-2.5" />
+                    {age.text}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-right font-mono font-bold text-purple-700">
+                  NPR {moneyCompact(group.grandTotal)}
+                </td>
+                <td className="px-5 py-3.5 text-right">
+                  <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function PendingGroupCard({
   group,
@@ -1822,6 +1903,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const [selectedMethods, setSelectedMethods] = useState<Set<PaymentMethod>>(new Set());
   const [paymentSplit, setPaymentSplit] = useState<PaymentSplit>({});
   const [qrMethod, setQrMethod] = useState<WalletId | null>(null);
+  const [payTargetIds, setPayTargetIds] = useState<string[]>([]); // NEW: which bills are being paid right now
 
   const [printGroup, setPrintGroup] = useState<GroupedPending | null>(null);
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<string | null>(null);
@@ -1891,6 +1973,18 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     [groupedPending, selectedKey]
   );
 
+    const selectedGroup = useMemo(
+    () => groupedPending.find((g) => g.key === selectedKey) || null,
+    [groupedPending, selectedKey]
+  );
+
+  // The bills actually being paid in this action (all of them, or a hand-picked subset)
+  const payTarget = useMemo(() => {
+    if (!selectedGroup) return null;
+    const bills = selectedGroup.bills.filter((b) => payTargetIds.includes(b._id));
+    return summarizeBills(bills);
+  }, [selectedGroup, payTargetIds]);
+
   // Overview stats
   const stats = useMemo(() => {
     const total = groupedPending.reduce((s, g) => s + g.grandTotal, 0);
@@ -1910,6 +2004,8 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setLoyaltyOpen(false);
     setLoyaltyMember(null);
     setLoyaltyPoints(0);
+    setPayTargetIds(selectedGroup ? selectedGroup.billIds : []); // default: pay the whole tab
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
   // Lock page scroll while the settle window is open
@@ -1922,7 +2018,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     };
   }, [selectedGroup]);
 
-  const grandTotal = selectedGroup?.grandTotal ?? 0;
+  const grandTotal = payTarget?.grandTotal ?? 0;
   const suggestedLoyaltyPoints = suggestedPoints(grandTotal);
 
   const totalPaid = useMemo(
@@ -1934,7 +2030,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const isFullyPaid = remainingBalance <= 0.01 && totalPaid > 0;
 
   // A bill can only be marked paid when the full amount is covered
-  const canMarkPaid = !!selectedGroup && !submitting && selectedMethods.size > 0 && isFullyPaid;
+  const canMarkPaid = !!selectedGroup && !submitting && payTargetIds.length > 0 && selectedMethods.size > 0 && isFullyPaid;
 
   const handleSelectGroup = (g: GroupedPending) => {
     setError('');
@@ -2027,12 +2123,12 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedGroup, printGroup, qrMethod, submitting, loyaltyOpen]);
 
-  const handleMarkPaid = async () => {
-    if (!selectedGroup || !canMarkPaid) return;
+   const handleMarkPaid = async () => {
+    if (!selectedGroup || !payTarget || !canMarkPaid) return;
     setSubmitting(true);
     setError('');
 
-    const groupBeingPaid = selectedGroup;
+    const target = payTarget;
     const methodLabel = selectedMethods.size > 1 ? 'Split' : Array.from(selectedMethods)[0] ?? 'Cash';
     const member = loyaltyMember;
     const pointsToAdd = member ? Math.max(Math.floor(loyaltyPoints), 0) : 0;
@@ -2044,9 +2140,9 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
     try {
       const results = await Promise.allSettled(
-        groupBeingPaid.billIds.map((id) => {
-          const bill = groupBeingPaid.bills.find((b) => b._id === id);
-          const billShare = groupBeingPaid.grandTotal > 0 ? (bill?.grandTotal ?? 0) / groupBeingPaid.grandTotal : 0;
+        target.billIds.map((id) => {
+          const bill = target.bills.find((b) => b._id === id);
+          const billShare = target.grandTotal > 0 ? (bill?.grandTotal ?? 0) / target.grandTotal : 0;
 
           return fetch(`${BILLS_URL}/${id}`, {
             method: 'PATCH',
@@ -2071,12 +2167,12 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       const failures = results.filter((r) => r.status === 'rejected');
       if (failures.length > 0) {
         throw new Error(
-          `${failures.length} of ${groupBeingPaid.billIds.length} bill(s) failed to update. This is usually a server CORS/connection issue — refresh and retry.`
+          `${failures.length} of ${target.billIds.length} bill(s) failed to update. This is usually a server CORS/connection issue — refresh and retry.`
         );
       }
 
       const orderResults = await Promise.allSettled(
-        groupBeingPaid.orderIds.map((orderId) =>
+        target.orderIds.map((orderId) =>
           fetch(`${ORDERS_URL}/${orderId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -2129,8 +2225,10 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         { label: 'Fonepay', amount: fonepayTotal },
       ].filter((p) => p.amount > 0);
 
-      setAllBills((prev) => prev.filter((b) => !groupBeingPaid.billIds.includes(b._id)));
-      setSelectedKey(null);
+      setAllBills((prev) => prev.filter((b) => !target.billIds.includes(b._id)));
+
+      const remainingInGroup = selectedGroup.billIds.filter((id) => !target.billIds.includes(id));
+
       setSelectedMethods(new Set());
       setPaymentSplit({});
       setQrMethod(null);
@@ -2138,7 +2236,13 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       setLoyaltyMember(null);
       setLoyaltyPoints(0);
 
-      setPrintGroup(groupBeingPaid);
+      if (remainingInGroup.length === 0) {
+        setSelectedKey(null); // whole tab settled — close the modal
+      } else {
+        setPayTargetIds(remainingInGroup); // some bills left — keep modal open, re-select what's left
+      }
+
+      setPrintGroup({ ...selectedGroup, ...target }); // receipt shows only what was just paid
       setReceiptPaymentMethod(methodLabel);
       setReceiptBreakdown(breakdown);
       setReceiptLoyalty(loyaltyResult);
@@ -2186,22 +2290,22 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
           </div>
         )}
 
-        {!compact && (
+              {!compact && (
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-slate-500">
               <span>{lang === 'en' ? 'Subtotal' : 'उप-जम्मा'}</span>
-              <span className="font-mono">NPR {money(selectedGroup.subtotal)}</span>
+              <span className="font-mono">NPR {money(payTarget?.subtotal ?? 0)}</span>
             </div>
-            {selectedGroup.discount > 0 && (
+            {(payTarget?.discount ?? 0) > 0 && (
               <div className="flex justify-between text-rose-600">
                 <span>{lang === 'en' ? 'Discount' : 'छुट'}</span>
-                <span className="font-mono">-NPR {money(selectedGroup.discount)}</span>
+                <span className="font-mono">-NPR {money(payTarget?.discount ?? 0)}</span>
               </div>
             )}
-            {selectedGroup.vatCollected > 0 && (
+            {(payTarget?.vatCollected ?? 0) > 0 && (
               <div className="flex justify-between text-slate-500">
                 <span>{lang === 'en' ? 'VAT' : 'भ्याट'}</span>
-                <span className="font-mono">NPR {money(selectedGroup.vatCollected)}</span>
+                <span className="font-mono">NPR {money(payTarget?.vatCollected ?? 0)}</span>
               </div>
             )}
           </div>
@@ -2247,11 +2351,11 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
           className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 py-4 text-base font-bold text-white shadow-lg shadow-purple-500/30 transition-all hover:-translate-y-0.5 hover:shadow-purple-500/40 active:scale-[.99] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none ${FOCUS}`}
         >
           {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
-          {submitting
+                    {submitting
             ? lang === 'en' ? 'Marking as paid…' : 'भुक्तानी हुँदै…'
             : lang === 'en'
-            ? `Mark ${selectedGroup.billIds.length} bill${selectedGroup.billIds.length !== 1 ? 's' : ''} as paid`
-            : `${selectedGroup.billIds.length} बिल भुक्तानी भएको चिन्ह लगाउनुहोस्`}
+            ? `Mark ${payTargetIds.length} bill${payTargetIds.length !== 1 ? 's' : ''} as paid`
+            : `${payTargetIds.length} बिल भुक्तानी भएको चिन्ह लगाउनुहोस्`}
         </button>
 
         {!canMarkPaid && !submitting && (
@@ -2411,22 +2515,23 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {visibleGroups.map((group, i) => (
-              <PendingGroupCard key={group.key} group={group} index={i} lang={lang} onSelect={handleSelectGroup} />
-            ))}
-          </div>
+                   <PendingCustomersTable groups={visibleGroups} onSelect={handleSelectGroup} lang={lang} />
         )}
       </section>
 
       {/* ================= FULL-SCREEN SETTLE WINDOW ================= */}
-      {selectedGroup && (
+            {selectedGroup && (
         <Portal>
+          <div
+            className="ub-fade fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+            onClick={closeSettle}
+          >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="settle-window-title"
-            className="ub-sheet fixed inset-0 z-[100] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[#fbfaff] font-sans text-slate-800 antialiased"
+            onClick={(e) => e.stopPropagation()}
+            className="ub-pop flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-[#fbfaff] font-sans text-slate-800 shadow-2xl antialiased"
           >
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
               <div className="absolute -left-32 -top-40 h-96 w-96 rounded-full bg-purple-300/25 blur-3xl" />
@@ -2562,7 +2667,6 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     )}
                   </div>
                 </section>
-
                 {/* Bills in this tab */}
                 <section className={`${CARD} shrink-0 overflow-hidden`} aria-labelledby="merged-bills-title">
                   <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -2570,16 +2674,37 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       <FileText className="h-5 w-5 text-amber-500" />
                       {lang === 'en' ? 'Bills in this tab' : 'यस खातामा बिलहरू'}
                     </h3>
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
-                      {selectedGroup.bills.length}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPayTargetIds(selectedGroup.billIds)}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        {lang === 'en' ? 'Select all' : 'सबै छान्नुहोस्'}
+                      </button>
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                        {payTargetIds.length}/{selectedGroup.bills.length} {lang === 'en' ? 'selected' : 'छानिएको'}
+                      </span>
+                    </div>
                   </div>
                   <ul className="ub-scroll max-h-64 divide-y divide-slate-100 overflow-y-auto">
                     {selectedGroup.bills.map((b) => {
                       const when = b.date || b.createdAt || '';
                       const qty = (b.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+                      const checked = payTargetIds.includes(b._id);
                       return (
                         <li key={b._id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-amber-50/40">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              setPayTargetIds((prev) =>
+                                e.target.checked ? [...prev, b._id] : prev.filter((id) => id !== b._id)
+                              )
+                            }
+                            className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-purple-600 focus:ring-purple-400"
+                            aria-label={`${lang === 'en' ? 'Include bill' : 'बिल समावेश गर्नुहोस्'} ${b.invoiceNo}`}
+                          />
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-100">
                             <Receipt className="h-4 w-4" />
                           </span>
@@ -2592,6 +2717,13 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                             </p>
                           </div>
                           <span className="shrink-0 font-mono text-sm font-bold text-slate-900">NPR {money(b.grandTotal)}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPayTargetIds([b._id])}
+                            className="shrink-0 rounded-lg border border-purple-200 px-2.5 py-1.5 text-[11px] font-bold text-purple-700 transition hover:bg-purple-50"
+                          >
+                            {lang === 'en' ? 'Pay only this' : 'यही तिर्नुहोस्'}
+                          </button>
                         </li>
                       );
                     })}
@@ -2759,10 +2891,11 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
               </aside>
             </div>
 
-            {/* Mobile / tablet footer */}
+                       {/* Mobile / tablet footer */}
             <div className="relative z-10 shrink-0 border-t border-purple-100 bg-white px-4 pb-4 pt-3 shadow-[0_-8px_24px_rgba(109,40,217,0.08)] lg:hidden">
               {renderFooter(true)}
             </div>
+          </div>
           </div>
         </Portal>
       )}
