@@ -252,9 +252,11 @@ function SplashScreen({ lang }: { lang: Lang }) {
         <div className="relative h-24 w-24 flex items-center justify-center anim-floaty">
           <span className="absolute inset-0 rounded-[28px] bg-purple-400/30 anim-pulse-ring" />
           <span className="absolute -inset-2.5 rounded-[34px] border-2 border-purple-100 border-t-purple-600 anim-spin-slow" />
-          <div className="relative h-24 w-24 rounded-[28px] bg-gradient-to-br from-purple-500 via-violet-600 to-indigo-600 flex items-center justify-center shadow-2xl shadow-purple-500/40">
-            <Utensils className="h-10 w-10 text-white" strokeWidth={2.2} aria-hidden="true" />
-          </div>
+                    <img
+            src="/pwa-192.png"
+            alt="Atithi RMS"
+            className="relative h-24 w-24 rounded-[28px] bg-white object-contain p-1.5 shadow-2xl shadow-purple-500/40"
+          />
         </div>
 
         <h1 className="mt-10 text-4xl font-black tracking-tight text-slate-900">
@@ -412,11 +414,12 @@ function Sidebar({
       {/* Brand */}
       <div className={`relative flex items-center ${compact ? 'justify-center px-2' : 'justify-between px-5'} pt-6 pb-5`}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="relative shrink-0">
-            <div className="absolute inset-0 rounded-2xl bg-purple-500/40 blur-md" aria-hidden="true" />
-            <div className="relative h-11 w-11 rounded-2xl bg-gradient-to-br from-purple-500 via-violet-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
-              <Utensils className="h-5 w-5" strokeWidth={2.3} aria-hidden="true" />
-            </div>
+                    <div className="relative shrink-0">
+            <img
+              src="/pwa-192.png"
+              alt="Atithi RMS"
+              className="h-11 w-11 rounded-2xl bg-white object-contain p-0.5 ring-1 ring-purple-100 shadow-md shadow-purple-500/20"
+            />
           </div>
           {!compact && (
             <div className="min-w-0">
@@ -655,9 +658,11 @@ function StaffLoginGate({
       {/* Top bar */}
       <header className="relative z-10 flex items-center justify-between px-4 sm:px-8 py-5">
         <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-purple-500 via-violet-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/30">
-            <Utensils className="h-4 w-4" aria-hidden="true" />
-          </div>
+                    <img
+            src="/pwa-192.png"
+            alt="Atithi RMS"
+            className="h-9 w-9 rounded-xl bg-white object-contain p-0.5 ring-1 ring-purple-100 shadow-md shadow-purple-500/20"
+          />
           <p className="text-base font-black tracking-tight text-slate-900">
             Atithi <span className="text-purple-600">RMS</span>
           </p>
