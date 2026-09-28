@@ -1973,10 +1973,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     [groupedPending, selectedKey]
   );
 
-    const selectedGroup = useMemo(
-    () => groupedPending.find((g) => g.key === selectedKey) || null,
-    [groupedPending, selectedKey]
-  );
+
 
   // The bills actually being paid in this action (all of them, or a hand-picked subset)
   const payTarget = useMemo(() => {
