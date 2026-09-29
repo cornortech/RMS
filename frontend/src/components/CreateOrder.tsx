@@ -21,6 +21,8 @@ import {
   Armchair,
   ArrowLeftRight,
   Info,
+  Check,
+  History,
 } from 'lucide-react';
 
 // ==========================================
@@ -31,6 +33,7 @@ const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com
 const MENU_URL = `${API_BASE}/api/menu`;
 const ORDERS_URL = `${API_BASE}/api/orders`;
 const TABLES_URL = `${API_BASE}/api/tables`;
+const CUSTOMERS_URL = `${API_BASE}/api/customers`;
 
 // Saved when an order is taken without a table / without a name
 const NO_TABLE_LABEL = 'No Table';
@@ -122,6 +125,12 @@ interface TableItem {
   status: string;
 }
 
+interface CustomerItem {
+  id: string;
+  restaurantId: string;
+  customerName: string;
+}
+
 interface CartLine {
   menuItemId: string;
   name: string;
@@ -155,6 +164,12 @@ const mapRawToTable = (raw: any): TableItem => ({
   capacity: Number(raw.capacity) || 0,
   occupiedSeats: Number(raw.occupiedSeats ?? 0),
   status: raw.status || 'Available',
+});
+
+const mapRawToCustomer = (raw: any): CustomerItem => ({
+  id: raw._id || raw.id,
+  restaurantId: String(raw.restaurantId?._id || raw.restaurantId || ''),
+  customerName: String(raw.customerName || '').trim(),
 });
 
 const isTableFull = (t: TableItem) => t.capacity > 0 && t.occupiedSeats >= t.capacity;
@@ -230,6 +245,12 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   const [tablesLoading, setTablesLoading] = useState(true);
   const [tablesError, setTablesError] = useState('');
 
+  // Saved customers (names saved for THIS restaurant)
+  const [customers, setCustomers] = useState<CustomerItem[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+
   // Order
   const [orderBy, setOrderBy] = useState<OrderBy>('table');
   const [customerName, setCustomerName] = useState('');
@@ -248,15 +269,20 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const switchedByUser = useRef(false);
   const toastTimer = useRef<number | null>(null);
+  const blurTimer = useRef<number | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ message, type });
     toastTimer.current = window.setTimeout(() => setToast(null), 3000);
   };
-  useEffect(() => () => {
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      if (blurTimer.current) window.clearTimeout(blurTimer.current);
+    },
+    []
+  );
 
   // Focus the name box right after the user switches to "name"
   useEffect(() => {
@@ -266,7 +292,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   }, [orderBy]);
 
   // ==========================================
-  // FETCH MENU + TABLES
+  // FETCH MENU + TABLES + CUSTOMERS
   // ==========================================
   const fetchMenu = async () => {
     setMenuLoading(true);
@@ -306,9 +332,65 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     }
   };
 
+  // Loads the saved customer names of the logged-in restaurant.
+  // Only customers whose restaurantId matches the one in localStorage are kept.
+  const fetchCustomers = async (silent = false) => {
+    if (!restaurantId) {
+      setCustomers([]);
+      setCustomersLoading(false);
+      return;
+    }
+    if (!silent) setCustomersLoading(true);
+    try {
+      const res = await fetch(`${CUSTOMERS_URL}/${encodeURIComponent(restaurantId)}`, {
+        headers: getAuthHeaders(),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || result.message || 'Failed to load customers.');
+      const rawData = Array.isArray(result) ? result : result.data || [];
+      const list: CustomerItem[] = rawData
+        .map(mapRawToCustomer)
+        .filter((c: CustomerItem) => c.customerName && String(c.restaurantId) === String(restaurantId));
+
+      // Remove duplicate names (keeps the newest, the API already returns newest first)
+      const seen = new Set<string>();
+      const unique = list.filter((c) => {
+        const key = c.customerName.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setCustomers(unique);
+    } catch (err) {
+      // Suggestions are optional, so a failure here should never block taking an order
+      console.error('Could not load customers:', err);
+    } finally {
+      setCustomersLoading(false);
+    }
+  };
+
+  // Saves a NEW customer name (only if it is not already saved for this restaurant)
+  const saveCustomerName = async (name: string) => {
+    const clean = name.trim();
+    if (!clean || !restaurantId) return;
+    const exists = customers.some((c) => c.customerName.toLowerCase() === clean.toLowerCase());
+    if (exists) return;
+    try {
+      const res = await fetch(CUSTOMERS_URL, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ restaurantId, customerName: clean }),
+      });
+      if (res.ok) fetchCustomers(true);
+    } catch (err) {
+      console.error('Could not save customer name:', err);
+    }
+  };
+
   useEffect(() => {
     fetchMenu();
     fetchTables();
+    fetchCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -350,6 +432,19 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     return sorted.sort((a, b) => Number(b.available) - Number(a.available));
   }, [menuItems, searchQuery, selectedCategory, sortBy]);
 
+  // Saved names that match what is typed (all recent names when the box is empty)
+  const customerSuggestions = useMemo(() => {
+    const q = customerName.toLowerCase().trim();
+    const list = q ? customers.filter((c) => c.customerName.toLowerCase().includes(q)) : customers;
+    return list.slice(0, 8);
+  }, [customers, customerName]);
+
+  const typedName = customerName.trim();
+  const isExistingCustomer = useMemo(
+    () => !!typedName && customers.some((c) => c.customerName.toLowerCase() === typedName.toLowerCase()),
+    [customers, typedName]
+  );
+
   const selectedTable = useMemo(() => tables.find((t) => t.id === tableNumber) || null, [tables, tableNumber]);
 
   const cartQty = useMemo(() => {
@@ -378,6 +473,48 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     orderBy === 'name' ? customerName.trim() : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
 
   // ==========================================
+  // CUSTOMER NAME PICKER HELPERS
+  // ==========================================
+  const pickCustomer = (name: string) => {
+    setCustomerName(name);
+    setShowSuggestions(false);
+    setHighlight(-1);
+    setErrorMessage('');
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setShowSuggestions(true);
+      setHighlight((h) => (customerSuggestions.length ? (h + 1) % customerSuggestions.length : -1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight((h) =>
+        customerSuggestions.length ? (h <= 0 ? customerSuggestions.length - 1 : h - 1) : -1
+      );
+    } else if (e.key === 'Enter') {
+      if (showSuggestions && highlight >= 0 && customerSuggestions[highlight]) {
+        e.preventDefault();
+        pickCustomer(customerSuggestions[highlight].customerName);
+      } else {
+        setShowSuggestions(false);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setHighlight(-1);
+    }
+  };
+
+  const handleNameBlur = () => {
+    // small delay so a click on a suggestion still registers
+    if (blurTimer.current) window.clearTimeout(blurTimer.current);
+    blurTimer.current = window.setTimeout(() => {
+      setShowSuggestions(false);
+      setHighlight(-1);
+    }, 120);
+  };
+
+  // ==========================================
   // TABLE / NAME SWITCH
   // ==========================================
   const switchOrderBy = (next?: OrderBy) => {
@@ -385,6 +522,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     if (target === orderBy) return;
     switchedByUser.current = true;
     setErrorMessage('');
+    setShowSuggestions(false);
     if (target === 'name') setTableNumber('');
     else setCustomerName('');
     setOrderBy(target);
@@ -441,6 +579,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     setErrorMessage('');
 
     const currentStaffId = (localStorage.getItem('staffId') || '').trim();
+    // Only a real typed/selected name is saved as a customer (not the "Guest (Table)" fallback)
+    const nameToSave = orderBy === 'name' ? customerName.trim() : '';
 
     try {
       const res = await fetch(ORDERS_URL, {
@@ -468,6 +608,10 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
 
       if (res.ok && data?.success !== false) {
         showToast('Order placed successfully!', 'success');
+
+        // Save the customer name (only if it is new). Does not block the order.
+        if (nameToSave) saveCustomerName(nameToSave);
+
         setCart([]);
         setCustomerName('');
         setTableNumber('');
@@ -677,7 +821,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                     </div>
                   )
                 ) : (
-                  /* ---------- CUSTOMER NAME ---------- */
+                  /* ---------- CUSTOMER NAME (type new OR pick a saved one) ---------- */
                   <div className="space-y-1.5">
                     <div className="relative">
                       <UserCircle2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -686,16 +830,102 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                         id="co-customer"
                         type="text"
                         value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="e.g. Ram Sharma"
+                        onChange={(e) => {
+                          setCustomerName(e.target.value);
+                          setShowSuggestions(true);
+                          setHighlight(-1);
+                        }}
+                        onFocus={() => {
+                          if (blurTimer.current) window.clearTimeout(blurTimer.current);
+                          setShowSuggestions(true);
+                        }}
+                        onBlur={handleNameBlur}
+                        onKeyDown={handleNameKeyDown}
+                        placeholder="Type a name or pick a saved one"
                         aria-label="Customer name"
-                        className={`${inputBase} pl-10`}
+                        aria-autocomplete="list"
+                        aria-expanded={showSuggestions}
+                        autoComplete="off"
+                        className={`${inputBase} pl-10 ${customerName ? 'pr-9' : ''}`}
                       />
+                      {customerName && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setCustomerName('');
+                            nameInputRef.current?.focus();
+                          }}
+                          aria-label="Clear name"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-slate-700"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+
+                      {/* Saved customers dropdown */}
+                      {showSuggestions && (customersLoading || customerSuggestions.length > 0) && (
+                        <div
+                          role="listbox"
+                          className="co-fade absolute left-0 right-0 top-full z-30 mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                        >
+                          {customersLoading ? (
+                            <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-slate-400">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading saved customers...
+                            </div>
+                          ) : (
+                            <>
+                              <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <History className="h-3 w-3" />
+                                {customerName.trim() ? 'Matching customers' : 'Saved customers'}
+                              </p>
+                              {customerSuggestions.map((c, i) => {
+                                const isSelected = c.customerName.toLowerCase() === typedName.toLowerCase();
+                                return (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => pickCustomer(c.customerName)}
+                                    onMouseEnter={() => setHighlight(i)}
+                                    className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+                                      highlight === i ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100 text-[11px] font-bold uppercase text-purple-700">
+                                      {c.customerName.charAt(0)}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate font-semibold">{c.customerName}</span>
+                                    {isSelected && <Check className="h-4 w-4 shrink-0 text-purple-600" />}
+                                  </button>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <p className="flex items-center gap-1 text-[11px] text-slate-400">
-                      <Info className="h-3 w-3" />
-                      No table needed. The order is saved under this name.
-                    </p>
+
+                    {typedName ? (
+                      isExistingCustomer ? (
+                        <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Saved customer. This name will be used.
+                        </p>
+                      ) : (
+                        <p className="flex items-center gap-1 text-[11px] font-medium text-purple-600">
+                          <Info className="h-3 w-3" />
+                          New customer. The name will be saved after the order is placed.
+                        </p>
+                      )
+                    ) : (
+                      <p className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <Info className="h-3 w-3" />
+                        No table needed. Type a new name or pick a saved customer.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1170,7 +1400,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
-                  {orderBy === 'table' ? 'Dine-in by table' : 'By name'}
+                  {orderBy === 'table' ? 'Dine-in by table' : isExistingCustomer ? 'Saved customer' : 'New customer'}
                 </span>
               </div>
 

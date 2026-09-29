@@ -19,6 +19,7 @@ const loyaltyRoutes = require("./routes/loyalty");
 const WaiterCall = require("./models/waiterCall");
 const QrConfig = require("./models/QrConfig");
 const Loyalty = require("./models/loyalty");
+const Customer = require("./models/customerName");
 const { isExpired, EXPIRED_MESSAGE } = require("./utils/subscription");
 
 
@@ -59,6 +60,106 @@ const parseNum = (val, fallback = 0) => {
 
 // Only accept real strings from the browser (blocks object/array tricks).
 const str = (v) => (typeof v === "string" ? v.trim() : "");
+
+
+
+
+
+
+
+
+// ==========================
+// CRUD OPERATIONS FOR CUSTOMER NAME
+// ==========================
+
+// 1. CREATE: Add a new customer for a specific restaurant
+app.post("/api/customers", async (req, res) => {
+    try {
+        const { restaurantId, customerName } = req.body;
+
+        if (!restaurantId || !customerName) {
+            return res.status(400).json({ error: "restaurantId and customerName are required." });
+        }
+
+        const newCustomer = new Customer({ restaurantId, customerName });
+        const savedCustomer = await newCustomer.save();
+
+        res.status(201).json({
+            message: "Customer saved successfully",
+            data: savedCustomer,
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 2. READ: Get all customers for a specific restaurant (Uses your compound index)
+app.get("/api/customers/:restaurantId", async (req, res) => {
+    try {
+        const { restaurantId } = req.params;
+
+        // Automatically sorted by newest first because of your index
+        const customers = await Customer.find({ restaurantId });
+
+        res.status(200).json({
+            count: customers.length,
+            data: customers,
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 3. UPDATE: Update a customer's name by their ID
+app.put("/api/customers/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { customerName } = req.body;
+
+        if (!customerName) {
+            return res.status(400).json({ error: "customerName is required for update." });
+        }
+
+        const updatedCustomer = await Customer.findByIdAndUpdate(
+            id,
+            { customerName },
+            { new: true, runValidators: true } // Returns the updated document
+        );
+
+        if (!updatedCustomer) {
+            return res.status(404).json({ error: "Customer not found." });
+        }
+
+        res.status(200).json({
+            message: "Customer updated successfully",
+            data: updatedCustomer,
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 4. DELETE: Delete a customer by their ID
+app.delete("/api/customers/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const deletedCustomer = await Customer.findByIdAndDelete(id);
+
+        if (!deletedCustomer) {
+            return res.status(404).json({ error: "Customer not found." });
+        }
+
+        res.status(200).json({
+            message: "Customer deleted successfully",
+            data: deletedCustomer,
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 
 
 
