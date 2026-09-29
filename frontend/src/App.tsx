@@ -7,6 +7,7 @@ import {
   Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer,
    Languages, ArrowLeft, Store, KeyRound,Bell,
 } from 'lucide-react';
+import { printReceipt } from './utils/printReceipt';
 import { useLang } from './i18n';
 import { Customer, Sale } from './types';
 import { TRANSLATIONS } from './translations';
@@ -1556,7 +1557,7 @@ const { lang, setLang } = useLang();
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => printReceipt('global-printable-receipt')}
                 className={`px-6 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 cursor-pointer ${GRADIENT_BTN} ${FOCUS_RING}`}
               >
                 <Printer className="h-4 w-4" aria-hidden="true" />

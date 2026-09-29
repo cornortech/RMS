@@ -9,6 +9,7 @@ import {
   Star, Gift, Crown, Award, UserPlus, Phone,
 } from 'lucide-react';
 import BillQR, { WalletId } from './BillQR';
+import { printReceipt } from '../utils/printReceipt';
 
 // ==========================================
 // CONFIG
@@ -1868,7 +1869,7 @@ function MergedBillModal({
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => printReceipt('printable-merged-bill')}
                 className={`flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-purple-500/25 transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] ${FOCUS}`}
               >
                 <Printer className="h-4 w-4" />

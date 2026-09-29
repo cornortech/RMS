@@ -9,6 +9,7 @@ import {
   Timer, QrCode, ArrowLeft, ChevronRight, Info, Plus, Minus,
   Star, Gift, Crown, Award, UserPlus, Phone, Users, User, UserPen,
 } from 'lucide-react';
+import { printReceipt } from '../utils/printReceipt';
 
 // ==========================================
 // CONFIG
@@ -1738,7 +1739,7 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => printReceipt('printable-bill')}
                 className={`flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-purple-500/25 transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] ${FOCUS}`}
               >
                 <Printer className="h-4 w-4" />

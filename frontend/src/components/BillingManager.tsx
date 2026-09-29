@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Sale, Customer } from '../types';
 import { TRANSLATIONS } from '../translations';
+import { printReceipt } from '../utils/printReceipt';
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')).trim().replace(/\/+$/, '');
 const BILLS_URL = `${API_BASE}/api/bills`;
@@ -336,7 +337,7 @@ function InvoiceModal({
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => printReceipt('printable-bill')}
               className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md shadow-violet-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Printer className="h-3.5 w-3.5" />

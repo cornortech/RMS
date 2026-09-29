@@ -16,6 +16,7 @@ import {
   Download,
 } from "lucide-react";
 import { useLang } from "../i18n";
+import { printHtml } from '../utils/printReceipt';
 
 const API_BASE_URL = `${(import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com").trim().replace(/\/+$/, "")}/api`;
 
@@ -357,54 +358,36 @@ const TotalOrder: React.FC<TotalOrderProps> = ({ restaurantId }) => {
   // ==========================================
   // PRINT (unchanged behaviour)
   // ==========================================
-  const handlePrint = () => {
+    const handlePrint = () => {
     const printContent = document.getElementById("bill-print-area");
     if (!printContent) return;
 
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Sales Bill</title>
-          <style>
-            @page { size: 80mm auto; margin: 0; }
-            * { box-sizing: border-box; }
-            body {
-              width: 72mm;
-              margin: 0 auto;
-              padding: 4mm 2mm;
-              font-family: 'Courier New', Courier, monospace;
-              font-size: 11px;
-              line-height: 1.2;
-              font-weight: 900;
-              color: #000000;
-              background: #ffffff;
-            }
-            .center { text-align: center; }
-            .bold { font-weight: 900; }
-            .divider { border-top: 2px dashed #000; margin: 6px 0; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; font-weight: 900; }
-            th, td { text-align: left; padding: 2px 0; }
-            th:last-child, td:last-child { text-align: right; }
-            .item-row td { padding: 3px 0; }
-            .total-row { font-weight: 900; font-size: 12px; }
-            .header-title { font-size: 14px; font-weight: 900; text-transform: uppercase; }
-            .small { font-size: 10px; font-weight: 900; }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+    // Prints only the report, on paper exactly as long as the report (see utils/printReceipt.ts)
+    printHtml(printContent.innerHTML, {
+      extraCss: `
+        * { box-sizing: border-box; }
+        body {
+          width: 72mm;
+          margin: 0;
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 11px;
+          line-height: 1.2;
+          font-weight: 900;
+          color: #000000;
+          background: #ffffff;
+        }
+        .center { text-align: center; }
+        .bold { font-weight: 900; }
+        .divider { border-top: 2px dashed #000; margin: 6px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; font-weight: 900; }
+        th, td { text-align: left; padding: 2px 0; }
+        th:last-child, td:last-child { text-align: right; }
+        .item-row td { padding: 3px 0; }
+        .total-row { font-weight: 900; font-size: 12px; }
+        .header-title { font-size: 14px; font-weight: 900; text-transform: uppercase; }
+        .small { font-size: 10px; font-weight: 900; }
+      `,
+    });
   };
 
   // ==========================================
