@@ -107,13 +107,10 @@ ${appStyles}
     try {
       await whenReady();
 
-      // Exact paper: 80mm wide, as long as the receipt (+ a little space for the cutter)
-      const root = doc.querySelector('.print-root') as HTMLElement | null;
-      const heightPx = root ? root.getBoundingClientRect().bottom : doc.body.scrollHeight;
-      const heightMm = Math.ceil(heightPx / PX_PER_MM) + 8;
-
+           // No page height: the printer's own 80mm roll decides the length,
+      // so Windows doesn't center a small page in the middle of its paper.
       const page = doc.createElement('style');
-      page.textContent = `@page { size: ${PAPER_WIDTH_MM}mm ${heightMm}mm; margin: 0; }`;
+      page.textContent = '@page { margin: 0; }';
       doc.head.appendChild(page);
 
       win.onafterprint = cleanup;

@@ -430,9 +430,9 @@ function autoPrintOrder(order: Order, isUpdate: boolean = false) {
       if (doc.fonts?.ready) await doc.fonts.ready;
 
       // Tell the printer the exact paper: 80mm wide, as long as the ticket
-      const heightMm = Math.ceil((doc.body.scrollHeight * 25.4) / 96) + 6;
+           // No page height: the printer's own 80mm roll decides the length
       const pageStyle = doc.createElement('style');
-      pageStyle.textContent = `@page { size: 80mm ${heightMm}mm; margin: 0; }`;
+      pageStyle.textContent = '@page { margin: 0; }';
       doc.head.appendChild(pageStyle);
 
       win.onafterprint = cleanup;
