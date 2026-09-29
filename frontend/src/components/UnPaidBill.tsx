@@ -1643,33 +1643,7 @@ function MergedBillModal({
   return (
     <Portal>
       <div className="ub-fade fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <style>{`
-          @media print {
-            @page { size: 80mm auto; margin: 2mm; }
-            html, body { width: 80mm; }
-            body * { visibility: hidden; }
-            #printable-merged-bill, #printable-merged-bill * { visibility: visible; }
-            #printable-merged-bill {
-              position: absolute; left: 0; top: 0;
-              width: 76mm; max-width: 76mm; max-height: none !important;
-              overflow: visible !important; border: none !important;
-              box-shadow: none !important; background: #fff !important;
-              padding: 0 !important; margin: 0 !important;
-              font-size: 9px; line-height: 1.35;
-            }
-            #printable-merged-bill * {
-              font-weight: 600 !important; color: #000 !important;
-              -webkit-font-smoothing: antialiased;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            #printable-merged-bill h3 { font-size: 12px; font-weight: 800 !important; }
-            #printable-merged-bill h4 { font-size: 10px; font-weight: 700 !important; }
-            #printable-merged-bill table { font-size: 8.5px; }
-            #printable-merged-bill .pt-6 { padding-top: 10px; }
-          }
-        `}</style>
-
+   
         <div
           role="dialog"
           aria-modal="true"
@@ -1735,7 +1709,7 @@ function MergedBillModal({
 
             <div
               id="printable-merged-bill"
-              className="max-h-[420px] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-[#fcfbff] p-5 font-sans text-xs text-slate-800 shadow-inner"
+             className="max-h-[420px] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 font-sans text-xs text-slate-800 shadow-inner"
             >
               <div className="space-y-0.5 border-b border-dashed border-slate-300 pb-2 text-center">
                 <h3 className="text-sm font-extrabold uppercase tracking-tight text-slate-950">{displayRestaurantName}</h3>

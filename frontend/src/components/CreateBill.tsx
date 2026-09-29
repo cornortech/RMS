@@ -1526,24 +1526,7 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
   return (
     <Portal>
       <div className="cb-fade fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <style>{`
-          @media print {
-            @page { size: 80mm auto; margin: 0mm; }
-            html, body { width: 80mm; }
-            body * { visibility: hidden; }
-            #printable-bill, #printable-bill * { visibility: visible; }
-            #printable-bill {
-              position: absolute; left: 0; top: 0;
-              width: 72mm; max-width: 72mm; max-height: none !important;
-              overflow: visible !important; border: none !important;
-              box-shadow: none !important; background: #ffffff !important;
-              padding: 4mm 2mm !important; margin: 0 !important;
-              font-family: 'Courier New', Courier, monospace !important;
-              font-size: 11px !important; line-height: 1.2 !important;
-              font-weight: 900 !important; color: #000000 !important;
-            }
-          }
-        `}</style>
+      
 
         <div
           role="dialog"
