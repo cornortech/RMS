@@ -104,39 +104,7 @@ const ModalPortal: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 // PRINT STYLES — only #printable-bill is visible when printing,
 // forced to 80mm thermal-paper width with bold black text.
 // ==========================================
-const PRINT_STYLES = `
-  @media print {
-    body * {
-      visibility: hidden !important;
-    }
-    #printable-bill,
-    #printable-bill * {
-      visibility: visible !important;
-    }
-    #printable-bill {
-      position: fixed !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 80mm !important;
-      max-width: 80mm !important;
-      margin: 0 !important;
-      padding: 3mm 2mm !important;
-      box-shadow: none !important;
-      border: none !important;
-      background: #ffffff !important;
-    }
-    #printable-bill * {
-      color: #000000 !important;
-      font-weight: 900 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    @page {
-      size: 80mm auto;
-      margin: 0;
-    }
-  }
-`;
+
 
 // ==========================================
 // LIGHT CLEAN THERMAL INVOICE MODAL
@@ -176,7 +144,6 @@ function InvoiceModal({
 
   return (
     <ModalPortal>
-      <style>{PRINT_STYLES}</style>
       <div
         className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200 overflow-y-auto"
         onClick={onClose}

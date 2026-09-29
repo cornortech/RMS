@@ -58,7 +58,7 @@ ${appStyles}
 <style>
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; width: ${PAPER_WIDTH_MM}mm !important; }
   /* Everything is inside .print-root: 72mm wide, starting at the LEFT edge of the roll */
-  .print-root { width: 72mm; padding: 2mm 2mm 0; box-sizing: border-box; }
+.print-root { width: 80mm; padding: 0 4mm; box-sizing: border-box; }
   .print-root > * {
     position: static !important;
     width: 100% !important;
@@ -72,6 +72,7 @@ ${appStyles}
   }
   .print-root, .print-root * { visibility: visible !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-root, .print-root * { color: #000 !important; }
   ${options.extraCss || ''}
 </style>
 </head>
