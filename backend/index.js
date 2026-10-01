@@ -20,7 +20,7 @@ const WaiterCall = require("./models/waiterCall");
 const QrConfig = require("./models/QrConfig");
 const Loyalty = require("./models/loyalty");
 const Customer = require("./models/customerName");
-const { isExpired, EXPIRED_MESSAGE } = require("./utils/subscription");
+const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription");
 
 
 const app = express();
@@ -211,7 +211,8 @@ const publicUser = (r) => ({
     isActive: r.isActive,
     isAdmin: r.isAdmin,
     totalTime: r.totalTime,
-  remainingTime: r.remainingTime,
+    // Real days left, worked out from today's date (not the old saved number)
+    remainingTime: Number.isFinite(daysLeft(r)) ? Math.max(0, daysLeft(r)) : r.remainingTime,
 });
 
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
