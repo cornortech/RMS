@@ -20,6 +20,7 @@ export default function PayQr({ token, note, defaultProvider }: { token: string;
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [reload, setReload] = useState(0);
+    const [fixed, setFixed] = useState<{ included: boolean; amount: number; orderNo: string }>({ included: true, amount: 0, orderNo: '' });
   const reqId = useRef(0);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function PayQr({ token, note, defaultProvider }: { token: string;
         setProviders(j.providers || []);
         setImg(j.image || null);
         setShown(j.providerName || '');
+                setFixed({ included: j.amountIncluded !== false, amount: j.amount || 0, orderNo: j.orderNo || '' });
       })
       .catch(() => { if (id === reqId.current) setErr('Could not load the QR. Check your internet and try again.'); })
       .finally(() => { if (id === reqId.current) setLoading(false); });
@@ -77,7 +79,14 @@ export default function PayQr({ token, note, defaultProvider }: { token: string;
               </div>
             )}
           </div>
-          <p className="mt-2 text-xs text-slate-500">The amount is already filled in. Just scan and pay.</p>
+                   {img && !fixed.included ? (
+            <p className="mt-3 rounded-xl bg-amber-50 p-3 text-left text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+              This QR does not include the amount. After scanning, please type <b>Rs. {fixed.amount}</b>
+              {fixed.orderNo ? <> and write <b>{fixed.orderNo}</b> in the remarks</> : null}.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">The amount is already filled in. Just scan and pay.</p>
+          )}
         </div>
       )}
 

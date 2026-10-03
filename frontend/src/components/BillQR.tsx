@@ -76,6 +76,7 @@ export default function BillQR({
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+    const [amountIncluded, setAmountIncluded] = useState(true); // false = personal QR, customer must type the amount
   const requestId = useRef(0);
 
   const activeRestaurantId = propRestaurantId || getStoredRestaurantId();
@@ -126,6 +127,7 @@ export default function BillQR({
             qrImage = `data:image/png;base64,${qrImage}`;
           }
           setImg(qrImage);
+                    setAmountIncluded(data.amountIncluded !== false);
           if (!qrImage) setErr(`No QR returned for ${providerName}.`);
         } else {
           setImg('');
@@ -236,6 +238,11 @@ export default function BillQR({
         <div className="mt-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Amount</p>
           <p className="font-mono text-2xl font-black tabular-nums text-slate-900">Rs {safeAmount.toFixed(2)}</p>
+                    {img && !amountIncluded && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+              This QR has no amount. Ask the customer to type Rs {safeAmount.toFixed(2)} after scanning.
+            </p>
+          )}
         </div>
       )}
     </div>

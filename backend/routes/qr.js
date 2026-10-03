@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { decodeQrImage, makeDynamicPayload, renderQR } = require('../utils/fonepayDynamicQr');
+const { decodeQrImage, makeDynamicPayload, renderQR, isEmvPayload } = require('../utils/fonepayDynamicQr');
 const QrConfig = require('../models/QrConfig');
 const { requireManager } = require('../utils/auth');
 
@@ -95,7 +95,9 @@ router.post('/upload', requireManager, upload.single('qr'), async (req, res) => 
 
     res.json({
       success: true,
-      message: `${providerName} QR saved successfully.`,
+      message: isEmvPayload(payload)
+        ? `${providerName} QR saved successfully.`
+        : `${providerName} QR saved. Note: this looks like a personal QR, so the bill amount cannot be filled in automatically and the customer must type the amount. For automatic amounts, upload a Fonepay Business QR.`,
       data: {
         _id: config._id,
         restaurantId: config.restaurantId,
@@ -177,7 +179,7 @@ router.post('/dynamic', async (req, res) => {
 
     const payload = makeDynamicPayload(cfg.staticPayload, { amount, billNo });
     const image = await renderQR(payload);
-    res.json({ success: true, providerName: cfg.providerName, restaurantName: cfg.restaurantName, image });
+        res.json({ success: true, providerName: cfg.providerName, restaurantName: cfg.restaurantName, image, amountIncluded: isEmvPayload(cfg.staticPayload) });
   } catch (e) {
     serverError(res, e, 'DYNAMIC');
   }

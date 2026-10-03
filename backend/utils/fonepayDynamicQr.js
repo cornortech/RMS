@@ -148,12 +148,35 @@ function setEmvTag(payload, tag, value) {
 }
 
 /**
+ * True only for a standard EMV merchant QR (Fonepay Business QR etc.): starts with 000201 and every
+ * tag is readable. A PERSONAL eSewa / Khalti QR (for example {"eSewa_id": ...}) is NOT EMV, so an
+ * amount can never be added to it.
+ */
+function isEmvPayload(payload) {
+  if (typeof payload !== 'string' || !payload.startsWith('000201')) return false;
+  const clean = stripTrailingCrc(payload);
+  let idx = 0;
+  while (idx < clean.length) {
+    if (idx + 4 > clean.length) return false;
+    const len = parseInt(clean.substring(idx + 2, idx + 4), 10);
+    if (isNaN(len) || idx + 4 + len > clean.length) return false;
+    idx += 4 + len;
+  }
+  return idx === clean.length;
+}
+
+/**
  * Modifies the static Fonepay/EMV QR payload to insert dynamic amount & bill number.
  */
 function makeDynamicPayload(staticPayload, { amount, billNo } = {}) {
   if (!staticPayload) {
     throw new Error('Static QR payload is missing.');
   }
+
+  
+  // A personal QR can't carry an amount. Editing it would only BREAK it ("QR not supported"),
+  // so we return it unchanged and the customer types the amount themselves.
+  if (!isEmvPayload(staticPayload)) return staticPayload;
 
   let updated = staticPayload;
 
@@ -200,7 +223,8 @@ async function renderQR(payload) {
 
 module.exports = {
   decodeQrImage,
-  makeDynamicPayload,
+    makeDynamicPayload,
+  isEmvPayload,
   renderQR,
   setEmvTag,
   calculateCRC16,

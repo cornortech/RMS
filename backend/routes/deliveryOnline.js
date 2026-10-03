@@ -21,7 +21,7 @@ const Rider = require("../models/rider");
 const core = require("../utils/deliveryCore");
 const realtime = require("../utils/realtime");
 const { isExpired } = require("../utils/subscription");
-const { makeDynamicPayload, renderQR } = require("../utils/fonepayDynamicQr");
+const { makeDynamicPayload, renderQR, isEmvPayload } = require("../utils/fonepayDynamicQr");
 const { getProvider } = require("../utils/paymentProviders");
 
 const router = express.Router();
@@ -172,7 +172,8 @@ router.get("/track/:token/pay-qr", async (req, res) => {
     // Remember which wallet was used, so staff know where to check the money
     if (order.paymentProvider !== chosen) await DeliveryOrder.updateOne({ _id: order._id }, { $set: { paymentProvider: chosen } });
 
-    return res.json({ success: true, image, providerName: chosen, providers });
+    // amountIncluded=false means a personal QR: the customer must type the amount (we tell them how much)
+    return res.json({ success: true, image, providerName: chosen, providers, amountIncluded: isEmvPayload(cfg.staticPayload), amount: order.totalAmount, orderNo: order.orderNo });
   } catch (e) {
     console.error("🔴 PAY QR ERROR:", e);
     return res.json({ success: true, image: null, providers: [] });
