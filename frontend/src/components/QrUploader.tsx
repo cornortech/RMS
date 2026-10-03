@@ -137,7 +137,7 @@ function QrPreviewModal({
 
 export default function QrManager() {
   const [configs, setConfigs] = useState<QrConfig[]>([]);
-  const [providerName, setProviderName] = useState('');
+  const [providerName, setProviderName] = useState(PROVIDERS[0]);
   const [busy, setBusy] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -197,7 +197,7 @@ export default function QrManager() {
     try {
       const fd = new FormData();
       fd.append('qr', file);
-      fd.append('providerName', providerName);
+      fd.append('providerName', providerName || PROVIDERS[0]);
       fd.append('restaurantId', restaurantId); // Sends "9898"
       fd.append('restaurantName', restaurantName); // Sends "local"
 
