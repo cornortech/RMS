@@ -25,7 +25,7 @@ const OFFLINE_WRITES: { method: string; pattern: RegExp; collection: string | nu
 ];
 
 // Login, session check and the customer QR pages are never handled offline.
-const NEVER_OFFLINE = /^\/api\/(auth\/|staff\/login|public\/)/;
+const NEVER_OFFLINE = /^\/api\/(auth\/|staff\/login|public\/|delivery\/)/;
 
 // Pages to pre-load into the local cache while online
 const WARM_PATHS = ['/api/menu', '/api/tables', '/api/orders', '/api/bills', '/api/loyalty'];

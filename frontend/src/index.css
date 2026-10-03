@@ -58,3 +58,6 @@
   #printable-bill table { font-size: 8.5px; }
   #printable-bill .pt-8 { padding-top: 12px; }
 }
+
+.thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: #e9d5ff; border-radius: 999px; }

@@ -4,6 +4,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const mongoose = require("mongoose");
+const http = require("http"); // 🛵 DELIVERY: needed for Socket.IO
+const realtime = require("./utils/realtime"); // 🛵 DELIVERY: live updates
 
 const conectDb = require("./connectDb");
 const Menu = require("./models/menu");
@@ -262,6 +264,11 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
 // ==========================================
 // 🔒 EVERYTHING BELOW THIS LINE NEEDS A VALID TOKEN
 // ==========================================
+
+// 🛵 DELIVERY: customer website + rider app (no restaurant login needed)
+app.use("/api/online", require("./routes/deliveryOnline"));
+app.use("/api/rider-app", require("./routes/riderApp"));
+
 app.use("/api/public", require("./routes/publicMenu"));
 app.use("/api", requireAuth);
 app.use("/api", require("./utils/idempotency"));
@@ -377,6 +384,7 @@ app.use('/api/qr', requireAuth, require('./routes/qr'));
 
 app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/delivery", require("./routes/delivery")); // 🛵 DELIVERY: staff/admin pages
 
 
 
@@ -1570,7 +1578,10 @@ conectDb()
             // Index already dropped or doesn't exist — safe to ignore
         }
 
-        app.listen(Number(PORT), "0.0.0.0", () => {
+                // 🛵 DELIVERY: use a http server so Socket.IO can share the same port
+        const server = http.createServer(app);
+        realtime.init(server, allowedOrigins);
+        server.listen(Number(PORT), "0.0.0.0", () => {
             console.log(`✅ RMS server running on port ${PORT}`);
         });
     })

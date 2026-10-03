@@ -6,6 +6,7 @@ import {
   FileText, Printer, X, LogOut, Menu, Lock, User2, AlertCircle, Loader2,
   Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer,
    Languages, ArrowLeft, Store, KeyRound,Bell,
+  Bike,
 } from 'lucide-react';
 import { printReceipt } from './utils/printReceipt';
 import { useLang } from './i18n';
@@ -29,6 +30,8 @@ import OrdersPage from './components/Orders';
 import OfflineBanner from './offline/OfflineBanner';
 import { hasUnsyncedChanges } from './offline/offlineFetch';
    import Notifications from './components/Notifications';
+   import DeliveryHub from './components/delivery/DeliveryHub';
+import DeliveryAlerts from './components/delivery/DeliveryAlerts';
 
 const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
@@ -43,7 +46,7 @@ type StaffRole = 'Manager' | 'Waiter' | 'Kitchen Staff' | 'Cashier';
 type AppView =
   | 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings'
   | 'orders' | 'tables' | 'kitchen' | 'createbill' | 'totalorder'
- | 'unpaidbill' | 'stock' | 'notifications';
+  | 'unpaidbill' | 'stock' | 'notifications' | 'delivery';
 
 interface RoleConfig {
   label: StaffRole;
@@ -54,22 +57,22 @@ interface RoleConfig {
 const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   Manager: {
     label: 'Manager',
-    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'stock','notifications'],
+    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'stock','notifications','delivery'],
     defaultView: 'dashboard',
   },
   Waiter: {
     label: 'Waiter',
-    pages: ['inventory', 'orders', 'pos','notifications'],
+    pages: ['inventory', 'orders', 'pos','notifications','delivery'],
     defaultView: 'pos',
   },
   'Kitchen Staff': {
     label: 'Kitchen Staff',
-    pages: ['kitchen', 'stock'],
+    pages: ['kitchen', 'stock', 'delivery'],
     defaultView: 'kitchen',
   },
   Cashier: {
     label: 'Cashier',
-    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'stock'],
+    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'stock', 'delivery'],
     defaultView: 'createbill',
   },
 };
@@ -135,6 +138,7 @@ const NAV_ITEMS: NavItem[] = [
   { view: 'pos', icon: ShoppingBag, group: 'operations', label: { en: 'Create Order', ne: 'अर्डर बनाउनुहोस्' } },
   { view: 'orders', icon: ClipboardList, group: 'operations', label: { en: 'Orders', ne: 'अर्डरहरू' } },
      { view: 'notifications', icon: Bell, group: 'operations', label: { en: 'Notifications', ne: 'सूचनाहरू' } },
+       { view: 'delivery', icon: Bike, group: 'operations', label: { en: 'Delivery', ne: 'डेलिभरी' } },
   { view: 'tables', icon: LayoutGrid, group: 'operations', label: { en: 'Tables', ne: 'टेबलहरू' } },
   { view: 'kitchen', icon: Flame, group: 'operations', label: { en: 'Kitchen', ne: 'भान्सा' } },
   { view: 'inventory', icon: Utensils, group: 'operations', label: { en: 'Menu', ne: 'मेनु' } },
@@ -1344,6 +1348,7 @@ const { lang, setLang } = useLang();
 
             {currentView === 'orders' && canAccess('orders') && <OrdersPage />}
                {currentView === 'notifications' && canAccess('notifications') && <Notifications />}
+               {currentView === 'delivery' && canAccess('delivery') && <DeliveryHub role={staffRole} />}
 
             {currentView === 'inventory' && canAccess('inventory') && (
               <MenuManager lang={lang} currentUserRole={legacyRole} />
@@ -1384,6 +1389,8 @@ const { lang, setLang } = useLang();
 
       {/* 📴 Offline / sync status */}
       <OfflineBanner />
+
+      {canAccess('delivery') && <DeliveryAlerts currentView={currentView} onOpen={() => navigate('delivery')} />}
 
       {/* GLOBAL INVOICE MODAL */}
       {invoiceToView && (
