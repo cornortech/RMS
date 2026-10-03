@@ -62,6 +62,15 @@ const publicSettings = (s) => ({
 
 const safeUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : "");
 
+// Wallets that have a QR uploaded in RMS → Settings → QR (same list the Create Bill page uses)
+const WALLET_ORDER = ["eSewa", "Khalti", "Fonepay"];
+async function configuredProviders(restaurantId) {
+  const rows = await QrConfig.find({ restaurantId }).select("providerName").lean();
+  const names = [...new Set(rows.map((r) => r.providerName))];
+  const rank = (n) => (WALLET_ORDER.indexOf(n) === -1 ? 99 : WALLET_ORDER.indexOf(n));
+  return names.sort((a, b) => rank(a) - rank(b));
+}
+
 // ---------------------------------------------------------------------
 // TRACKING (declared first so "track" is never mistaken for a restaurant key)
 // ---------------------------------------------------------------------
@@ -133,21 +142,40 @@ router.post("/track/:token/cancel", async (req, res) => {
   }
 });
 
-// Payment QR for "Online" orders (uses the QR the restaurant already uploaded in Settings)
+// Payment QR for "Online" orders — same dynamic QR as the Create Bill page.
+// GET /track/:token/pay-qr?provider=eSewa   (provider is optional)
 router.get("/track/:token/pay-qr", async (req, res) => {
   try {
     const order = await loadByToken(req.params.token);
     if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+
+    const providers = await configuredProviders(order.restaurantId);
     if (order.paymentMethod !== "Online" || order.paymentStatus === "Paid" || order.status === "Cancelled") {
-      return res.json({ success: true, image: null });
+      return res.json({ success: true, image: null, providers });
     }
-    const cfg = await QrConfig.findOne({ restaurantId: order.restaurantId });
-    if (!cfg) return res.json({ success: true, image: null });
+
+    // Use the wallet the customer asked for, else the one they chose when ordering, else the first one set up
+    const wanted = (typeof req.query.provider === "string" ? req.query.provider : "").trim().toLowerCase();
+    const chosen =
+      providers.find((p) => p.toLowerCase() === wanted) ||
+      providers.find((p) => p.toLowerCase() === String(order.paymentProvider || "").toLowerCase()) ||
+      providers[0];
+    if (!chosen) return res.json({ success: true, image: null, providers });
+
+    // 🔑 always this order's own restaurant
+    const cfg = await QrConfig.findOne({ restaurantId: order.restaurantId, providerName: chosen });
+    if (!cfg) return res.json({ success: true, image: null, providers });
+
     const payload = makeDynamicPayload(cfg.staticPayload, { amount: order.totalAmount, billNo: order.orderNo });
     const image = await renderQR(payload);
-    return res.json({ success: true, image, providerName: cfg.providerName });
+
+    // Remember which wallet was used, so staff know where to check the money
+    if (order.paymentProvider !== chosen) await DeliveryOrder.updateOne({ _id: order._id }, { $set: { paymentProvider: chosen } });
+
+    return res.json({ success: true, image, providerName: chosen, providers });
   } catch (e) {
-    return res.json({ success: true, image: null });
+    console.error("🔴 PAY QR ERROR:", e);
+    return res.json({ success: true, image: null, providers: [] });
   }
 });
 
@@ -193,7 +221,8 @@ router.get("/:restaurantKey/menu", async (req, res) => {
       success: true,
       data: {
         restaurant: { name: restaurant.restaurantName, location: restaurant.location, phone: restaurant.phone },
-        settings: publicSettings(settings),
+                settings: publicSettings(settings),
+        payProviders: await configuredProviders(restaurant.id), // wallets the customer can pick
         menu,
       },
     });
@@ -256,6 +285,19 @@ router.post("/:restaurantKey/orders", orderLimiter, async (req, res) => {
     if (paymentMethod === "COD" && !settings.acceptCOD) return res.status(400).json({ success: false, message: "Cash on Delivery is not available." });
     if (paymentMethod === "Online" && !settings.acceptOnline) return res.status(400).json({ success: false, message: "Online payment is not available." });
 
+        // Online payment: the customer must pick one of the wallets the restaurant has set up
+    let paymentProvider = "";
+    if (paymentMethod === "Online") {
+      const providers = await configuredProviders(restaurant.id);
+      if (providers.length > 0) {
+        const wanted = core.cleanText(b.paymentProvider, 30).toLowerCase();
+        paymentProvider = providers.find((p) => p.toLowerCase() === wanted) || "";
+        if (!paymentProvider) return res.status(400).json({ success: false, message: `Please choose how you want to pay: ${providers.join(", ")}.` });
+      } else {
+        paymentProvider = "manual"; // restaurant has no QR yet → customer follows the payment note
+      }
+    }
+
     const quote = await core.buildQuote({ restaurantId: restaurant.id, settings, cart: b.items, areaId: b.areaId, lat, lng });
     if (!quote.ok) return res.status(400).json({ success: false, message: quote.errors[0], errors: quote.errors });
 
@@ -279,7 +321,7 @@ router.post("/:restaurantKey/orders", orderLimiter, async (req, res) => {
       totalAmount: quote.totalAmount,
       paymentMethod,
       paymentStatus: paymentMethod === "Online" ? "Pending" : "Unpaid",
-      paymentProvider: paymentMethod === "Online" ? "manual" : "",
+           paymentProvider,
       status: "Pending",
       statusHistory: [{ status: "Pending", at: new Date(), by: "Customer" }],
       etaMinutes: (settings.estimatedPrepMinutes || 30) + 15,
@@ -298,7 +340,8 @@ router.post("/:restaurantKey/orders", orderLimiter, async (req, res) => {
         orderNo: order.orderNo,
         trackingToken: order.trackingToken,
         totalAmount: order.totalAmount,
-        paymentMethod,
+           paymentMethod,
+        paymentProvider,
         payment,
       },
     });

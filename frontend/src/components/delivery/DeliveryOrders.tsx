@@ -201,7 +201,7 @@ export default function DeliveryOrders({ role }: { role: string }) {
                   <div className="mt-3 flex items-center justify-between">
                     <span className="font-display text-xl font-bold text-purple-700">{money(o.totalAmount)}</span>
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${PAY_META[o.paymentStatus]}`}>
-                      {o.paymentMethod === 'COD' ? 'Cash' : 'Online'} · {o.paymentStatus}
+                  {o.paymentMethod === 'COD' ? 'Cash' : `Online${o.paymentProvider && o.paymentProvider !== 'manual' ? ` · ${o.paymentProvider}` : ''}`} · {o.paymentStatus}
                     </span>
                   </div>
                   {o.riderName && <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-indigo-600"><Bike className="h-3.5 w-3.5" /> {o.riderName}</p>}
@@ -295,7 +295,7 @@ function OrderDrawer({ order: o, isKitchen, onClose, onAct, onCancel, onReassign
             <div className="flex justify-between py-1"><span className="text-slate-500">Delivery charge</span><span className="font-semibold">{o.deliveryCharge ? money(o.deliveryCharge) : 'Free'}</span></div>
             <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 font-display text-lg font-bold text-purple-700"><span>Total</span><span>{money(o.totalAmount)}</span></div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600"><CreditCard className="h-3.5 w-3.5" /> {o.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Online payment'}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600"><CreditCard className="h-3.5 w-3.5" /> {o.paymentMethod === 'COD' ? 'Cash on Delivery' : `Online payment${o.paymentProvider && o.paymentProvider !== 'manual' ? ` · ${o.paymentProvider}` : ''}`}</span>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${PAY_META[o.paymentStatus]}`}>{o.paymentStatus}</span>
               {!isKitchen && o.paymentStatus !== 'Paid' && o.paymentStatus !== 'Refunded' && o.status !== 'Cancelled' && (
                 <button onClick={onPaid} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">Mark as paid</button>

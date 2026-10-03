@@ -15,7 +15,7 @@ interface Tracked {
   cancelWindow?: 'None' | 'Pending' | 'Confirmed' | 'Preparing';
   customer: { name: string; address: string; area: string; lat: number | null; lng: number | null };
   items: DItem[]; subTotal: number; deliveryCharge: number; totalAmount: number;
-  paymentMethod: 'COD' | 'Online'; paymentStatus: string; cancelReason: string;
+  paymentMethod: 'COD' | 'Online'; paymentStatus: string; paymentProvider?: string; cancelReason: string;
   rider: { name: string; phone: string } | null;
   riderLocation: { lat: number; lng: number; updatedAt: string } | null;
   etaMinutes: number; createdAt: string;
@@ -189,7 +189,7 @@ export default function TrackOrder() {
         )}
 
         {/* payment */}
-        {o.paymentMethod === 'Online' && o.paymentStatus !== 'Paid' && !cancelled && <PayQr token={o.trackingToken} />}
+        {o.paymentMethod === 'Online' && o.paymentStatus !== 'Paid' && !cancelled && <PayQr token={o.trackingToken} defaultProvider={o.paymentProvider} />}
 
         {/* summary */}
         <section className="rounded-3xl bg-white p-5 ring-1 ring-purple-100">

@@ -6,6 +6,7 @@ import {
 import { API_BASE, money } from '../../delivery/shared';
 import MapView from '../../delivery/MapView';
 import PayQr from '../../delivery/PayQr';
+import PayQr, { walletStyle } from '../../delivery/PayQr';
 
 // =====================================================================
 // CUSTOMER ORDERING WEBSITE       address:  /order/<restaurantKey>
@@ -21,7 +22,7 @@ interface PublicSettings {
   freeDeliveryAbove: number; radiusKm: number; restaurantLat: number | null; restaurantLng: number | null; estimatedPrepMinutes: number;
   areas: { _id: string; name: string; charge: number; minOrder: number }[];
 }
-interface PageData { restaurant: { name: string; location: string; phone: string }; settings: PublicSettings; menu: MenuItem[] }
+interface PageData { restaurant: { name: string; location: string; phone: string }; settings: PublicSettings; payProviders: string[]; menu: MenuItem[] }
 interface CartLine { key: string; menuItemId: string; name: string; price: number; imageUrl: string; quantity: number; addons: { name: string; price: number }[]; note: string }
 interface Quote { ok: boolean; errors: string[]; subTotal?: number; deliveryCharge?: number; totalAmount?: number; freeDelivery?: boolean; needsLocation?: boolean }
 
@@ -52,11 +53,11 @@ export default function OnlineOrder() {
 
   const [drawer, setDrawer] = useState(false);
   const [step, setStep] = useState<'cart' | 'details'>('cart');
-  const [placed, setPlaced] = useState<{ orderNo: string; trackingToken: string; totalAmount: number; paymentMethod: string } | null>(null);
+const [placed, setPlaced] = useState<{ orderNo: string; trackingToken: string; totalAmount: number; paymentMethod: string; paymentProvider?: string } | null>(null);
   const [lastToken, setLastToken] = useState(() => { try { return localStorage.getItem(`rms_last_${key}`) || ''; } catch { return ''; } });
 
   const saved = (() => { try { return JSON.parse(localStorage.getItem('rms_customer') || '{}'); } catch { return {}; } })();
-  const [form, setForm] = useState({ name: saved.name || '', phone: saved.phone || '', address: saved.address || '', landmark: saved.landmark || '', orderNote: '', areaId: '', paymentMethod: '' as '' | 'COD' | 'Online', lat: null as number | null, lng: null as number | null });
+  const [form, setForm] = useState({ name: saved.name || '', phone: saved.phone || '', address: saved.address || '', landmark: saved.landmark || '', orderNote: '', areaId: '', paymentMethod: '' as '' | 'COD' | 'Online', paymentProvider: '', lat: null as number | null, lng: null as number | null });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -144,6 +145,7 @@ export default function OnlineOrder() {
     if (form.address.trim().length < 5) return setFormError('Please enter your delivery address.');
     if (needsArea && !form.areaId) return setFormError('Please choose your delivery area.');
     if (!form.paymentMethod) return setFormError('Please choose how you want to pay.');
+        if (form.paymentMethod === 'Online' && (data?.payProviders.length || 0) > 0 && !form.paymentProvider) return setFormError(`Please choose ${data?.payProviders.join(', ')} to pay with.`);
     if (!quote?.ok) return setFormError(quote?.errors?.[0] || 'Please check your order.');
 
     setPlacing(true);
@@ -344,9 +346,37 @@ export default function OnlineOrder() {
                     <p className="mb-2 text-xs font-bold text-slate-600">Payment method *</p>
                     <div className="grid grid-cols-2 gap-3">
                       {s.acceptCOD && <PayOption active={form.paymentMethod === 'COD'} onClick={() => setForm({ ...form, paymentMethod: 'COD' })} icon={Banknote} title="Cash on delivery" sub="Pay the rider" />}
-                      {s.acceptOnline && <PayOption active={form.paymentMethod === 'Online'} onClick={() => setForm({ ...form, paymentMethod: 'Online' })} icon={Smartphone} title="Online payment" sub="QR / wallet" />}
+                      {s.acceptOnline && <PayOption active={form.paymentMethod === 'Online'} onClick={() => setForm({ ...form, paymentMethod: 'Online', paymentProvider: form.paymentProvider || data.payProviders[0] || '' })} icon={Smartphone} title="Online payment" sub="QR / wallet" />}
                     </div>
                   </div>
+
+                                     {form.paymentMethod === 'Online' && (
+                      <div className="mt-3 rounded-2xl bg-gradient-to-br from-purple-50 to-white p-3.5 ring-1 ring-purple-100 anim-pop">
+                        {data.payProviders.length > 0 ? (
+                          <>
+                            <p className="mb-2 text-xs font-bold text-slate-600">Pay with *</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {data.payProviders.map((p) => {
+                                const st = walletStyle(p);
+                                const on = form.paymentProvider === p;
+                                return (
+                                  <button key={p} type="button" onClick={() => setForm({ ...form, paymentProvider: p })} aria-pressed={on}
+                                    className="relative rounded-xl border-2 bg-white px-2 py-3 text-center text-sm font-extrabold transition active:scale-95"
+                                    style={on ? { borderColor: st.color, backgroundColor: st.soft, color: st.color } : { borderColor: '#e2e8f0', color: '#475569' }}>
+                                    {on && <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-white" style={{ backgroundColor: st.color }}><Check className="h-3 w-3" /></span>}
+                                    {p}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <p className="mt-2.5 text-xs text-slate-500">After you place the order, you will see the {form.paymentProvider || 'wallet'} QR with the exact amount to scan.</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-slate-600">{s.onlinePaymentNote || 'The restaurant will show you how to pay after you place the order.'}</p>
+                        )}
+                      </div>
+                    )}
+
                 </div>
               )}
             </div>
@@ -435,7 +465,7 @@ function ItemSheet({ item, open, onClose, onAdd }: { item: MenuItem; open: boole
 }
 
 /* ---------------------------- confirmation ---------------------------- */
-function Confirmation({ data, placed, onMore }: { data: PageData; placed: { orderNo: string; trackingToken: string; totalAmount: number; paymentMethod: string }; onMore: () => void }) {
+function Confirmation({ data, placed, onMore }: { data: PageData; placed: { orderNo: string; trackingToken: string; totalAmount: number; paymentMethod: string; paymentProvider?: string }; onMore: () => void }) {
   const online = placed.paymentMethod === 'Online';
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-white to-white px-4 py-10 font-sans">
@@ -455,12 +485,12 @@ function Confirmation({ data, placed, onMore }: { data: PageData; placed: { orde
           </div>
           <dl className="divide-y divide-slate-100 text-sm">
             <div className="flex justify-between p-4"><dt className="text-slate-500">Total</dt><dd className="font-bold text-slate-900">{money(placed.totalAmount)}</dd></div>
-            <div className="flex justify-between p-4"><dt className="text-slate-500">Payment</dt><dd className="font-bold text-slate-900">{online ? 'Online payment' : 'Cash on delivery'}</dd></div>
+            <div className="flex justify-between p-4"><dt className="text-slate-500">Payment</dt><dd className="font-bold text-slate-900">{online ? `Online${placed.paymentProvider && placed.paymentProvider !== 'manual' ? ` · ${placed.paymentProvider}` : ''}` : 'Cash on delivery'}</dd></div>
             <div className="flex justify-between p-4"><dt className="text-slate-500">Estimated time</dt><dd className="font-bold text-slate-900">~{(data.settings.estimatedPrepMinutes || 30) + 15} min</dd></div>
           </dl>
         </div>
 
-        {online && <div className="mt-4 text-left"><PayQr token={placed.trackingToken} note={data.settings.onlinePaymentNote} /></div>}
+        {online && <div className="mt-4 text-left"><PayQr token={placed.trackingToken} note={data.settings.onlinePaymentNote} defaultProvider={placed.paymentProvider} /></div>}
 
         <a href={`/track/${placed.trackingToken}`} className="mt-6 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 py-4 font-bold text-white shadow-lg shadow-purple-500/30"><Bike className="h-5 w-5" /> Track my order</a>
         <button onClick={onMore} className="mt-3 w-full rounded-2xl bg-white py-3.5 font-bold text-purple-700 ring-1 ring-purple-200 hover:bg-purple-50">Order something else</button>

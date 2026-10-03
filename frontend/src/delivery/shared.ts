@@ -29,6 +29,7 @@ export interface DOrder {
   paymentMethod: 'COD' | 'Online';
   paymentStatus: 'Unpaid' | 'Pending' | 'Paid' | 'Refunded';
   paymentRef?: string;
+    paymentProvider?: string;
   status: DStatus;
   statusHistory: DHistory[];
   cancelReason?: string;

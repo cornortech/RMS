@@ -304,7 +304,8 @@ function publicOrderView(o, restaurant) {
     deliveryCharge: o.deliveryCharge,
     totalAmount: o.totalAmount,
     paymentMethod: o.paymentMethod,
-    paymentStatus: o.paymentStatus,
+       paymentStatus: o.paymentStatus,
+    paymentProvider: o.paymentProvider || "",
     cancelReason: o.status === "Cancelled" ? o.cancelReason : "",
     rider: o.riderId ? { name: o.riderName, phone: o.riderPhone } : null,
     riderLocation: null, // filled in by the route when the order is out for delivery
