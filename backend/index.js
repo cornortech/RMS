@@ -769,6 +769,13 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
             return res.status(404).json({ success: false, message: "Order not found or unauthorized." });
         }
 
+                // 🛵 DELIVERY: if this is an online order, move the delivery order forward too
+        if (updateData.orderStatus !== undefined) {
+            require("./utils/kitchenSync")
+                .syncFromKitchen(updatedItem)
+                .catch((e) => console.error("⚠️ kitchen → delivery sync failed:", e.message));
+        }
+
         return res.status(200).json({
             success: true,
             message: "Order updated successfully!",
