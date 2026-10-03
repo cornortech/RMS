@@ -73,6 +73,9 @@ async function loadByToken(token) {
 async function trackingView(order) {
   const restaurant = await RestaurantUser.findOne({ id: order.restaurantId }).select("restaurantName phone location").lean();
   const view = core.publicOrderView(order.toObject ? order.toObject() : order, restaurant);
+  if (view.restaurant && restaurant) view.restaurant.key = String(restaurant._id); // so "Order again" can link back to the menu
+  const settings = await core.getSettings(order.restaurantId);
+  view.cancelWindow = settings.customerCancelWindow || "Confirmed"; // the tracking page uses this to show/hide Cancel
   if (order.riderId && order.status === "OutForDelivery" && mongoose.isValidObjectId(order.riderId)) {
     const rider = await Rider.findOne({ _id: order.riderId, restaurantId: order.restaurantId }).select("lastLocation").lean();
     if (rider?.lastLocation?.lat != null) view.riderLocation = rider.lastLocation;
@@ -91,21 +94,41 @@ router.get("/track/:token", async (req, res) => {
   }
 });
 
-// Customer can cancel only while the restaurant has not accepted yet.
+// Customer cancels their own order. The restaurant decides HOW LONG this is allowed
+// (Delivery → Settings → "Customer can cancel online"). The rule is enforced here on the server.
 router.post("/track/:token/cancel", async (req, res) => {
   try {
     const order = await loadByToken(req.params.token);
     if (!order) return res.status(404).json({ success: false, message: "Order not found." });
-    if (order.status !== "Pending") {
-      return res.status(400).json({ success: false, message: "The restaurant has already accepted your order. Please call them to cancel." });
+
+    const settings = await core.getSettings(order.restaurantId);
+    const allowed = core.customerCancelableStatuses(settings.customerCancelWindow);
+
+    if (!allowed.includes(order.status)) {
+      let message = "Your food is already being prepared, so it can no longer be cancelled online. Please call the restaurant.";
+      if (order.status === "Cancelled") message = "This order is already cancelled.";
+      else if (order.status === "Delivered") message = "This order has already been delivered.";
+      else if (allowed.length === 0) message = "Online cancellation is not available. Please call the restaurant.";
+      else if (["Assigned", "OutForDelivery"].includes(order.status)) message = "Your order is already on its way, so it can no longer be cancelled online. Please call the restaurant.";
+      return res.status(400).json({ success: false, message });
     }
-    core.applyStatus(order, "Cancelled", "Customer", "Cancelled by customer");
+
+    const reason = core.cleanText(req.body?.reason, 150) || "No reason given";
+    const wasPaid = order.paymentStatus === "Paid";
+    core.applyStatus(order, "Cancelled", "Customer", `Customer: ${reason}`);
     await order.save();
+    await core.syncKitchenTicket(order); // also cancels the ticket on the Kitchen Display
+
+    const plain = order.toObject();
+    realtime.emitToRestaurant(order.restaurantId, "delivery:order", { type: "updated", order: plain });
     const view = await trackingView(order);
-    realtime.emitToRestaurant(order.restaurantId, "delivery:order", { type: "updated", order: order.toObject() });
     realtime.emitToTracking(order.trackingToken, "delivery:update", view);
-    return res.json({ success: true, data: view });
+    return res.json({ success: true, data: view, needsRefund: wasPaid });
   } catch (e) {
+    if (e.name === "VersionError") {
+      return res.status(409).json({ success: false, message: "The restaurant just updated your order. Please refresh the page and try again." });
+    }
+    console.error("🔴 CUSTOMER CANCEL ERROR:", e);
     return res.status(500).json({ success: false, message: "Could not cancel the order." });
   }
 });

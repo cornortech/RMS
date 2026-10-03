@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 
 const areaSchema = new mongoose.Schema(
@@ -19,6 +18,9 @@ const deliverySettingsSchema = new mongoose.Schema(
     acceptCOD: { type: Boolean, default: true },
     acceptOnline: { type: Boolean, default: true },
     sendToKitchen: { type: Boolean, default: true }, // also show accepted online orders on the Kitchen Display
+    // How long the CUSTOMER may cancel by themselves on the tracking page:
+    //   None = never | Pending = before you accept | Confirmed = until cooking starts | Preparing = until the food is ready
+    customerCancelWindow: { type: String, enum: ["None", "Pending", "Confirmed", "Preparing"], default: "Confirmed" },
     onlinePaymentNote: { type: String, default: "" }, // e.g. "Pay to eSewa 98XXXXXXXX"
 
     baseCharge: { type: Number, default: 50, min: 0 }, // used when no delivery areas are set up

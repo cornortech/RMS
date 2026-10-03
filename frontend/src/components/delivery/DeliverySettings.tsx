@@ -8,7 +8,7 @@ import { api, copyText, money, type DSettings, type DArea } from '../../delivery
 const BLANK: DSettings = {
   acceptingOrders: true, acceptCOD: true, acceptOnline: true, sendToKitchen: true, onlinePaymentNote: '',
   baseCharge: 50, minOrderAmount: 0, freeDeliveryAbove: 0, radiusKm: 0, restaurantLat: null, restaurantLng: null,
-  estimatedPrepMinutes: 30, areas: [],
+  estimatedPrepMinutes: 30, areas: [], customerCancelWindow: 'Confirmed',
 };
 
 type Tab = 'rules' | 'areas' | 'menu' | 'share';
@@ -65,6 +65,14 @@ export default function DeliverySettings({ canEdit }: { canEdit: boolean }) {
             <Toggle disabled={dis} label="Online payment" hint="Customer pays by QR / transfer, you press “Mark as paid”." value={s.acceptOnline} onChange={(v) => set('acceptOnline', v)} />
             <Toggle disabled={dis} label="Show accepted orders on Kitchen Display" value={s.sendToKitchen} onChange={(v) => set('sendToKitchen', v)} />
             <Num disabled={dis} label="Food preparation time (minutes)" value={s.estimatedPrepMinutes} onChange={(v) => set('estimatedPrepMinutes', v)} />
+            <label className="block"><span className="mb-1 block text-xs font-bold text-slate-600">Customer can cancel online</span>
+              <select disabled={dis} className="inp" value={s.customerCancelWindow} onChange={(e) => set('customerCancelWindow', e.target.value as DSettings['customerCancelWindow'])}>
+                <option value="Pending">Only before you accept the order</option>
+                <option value="Confirmed">Until cooking starts (recommended)</option>
+                <option value="Preparing">Until the food is ready</option>
+                <option value="None">Never — they must call you</option>
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-400">Once a rider has the order, customers can never cancel online.</span></label>
             <label className="block"><span className="mb-1 block text-xs font-bold text-slate-600">Message for online payment (optional)</span>
               <textarea disabled={dis} rows={2} maxLength={300} value={s.onlinePaymentNote} onChange={(e) => set('onlinePaymentNote', e.target.value)} placeholder="e.g. Pay to eSewa 98XXXXXXXX and keep the screenshot" className="inp" /></label>
           </Card>

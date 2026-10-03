@@ -336,6 +336,7 @@ router.put("/settings", only(...MANAGER), async (req, res) => {
       acceptCOD: b.acceptCOD !== false,
       acceptOnline: b.acceptOnline !== false,
       sendToKitchen: b.sendToKitchen !== false,
+      customerCancelWindow: ["None", "Pending", "Confirmed", "Preparing"].includes(b.customerCancelWindow) ? b.customerCancelWindow : "Confirmed",
       onlinePaymentNote: core.cleanText(b.onlinePaymentNote, 300),
       baseCharge: money(b.baseCharge),
       minOrderAmount: money(b.minOrderAmount),

@@ -33,6 +33,15 @@ const TRANSITIONS = {
 };
 const canMove = (from, to) => (TRANSITIONS[from] || []).includes(to);
 
+// Which statuses may the CUSTOMER cancel from, for each restaurant setting?
+const CANCEL_WINDOWS = {
+  None: [],
+  Pending: ["Pending"],
+  Confirmed: ["Pending", "Confirmed"],
+  Preparing: ["Pending", "Confirmed", "Preparing"],
+};
+const customerCancelableStatuses = (window) => CANCEL_WINDOWS[window] || CANCEL_WINDOWS.Confirmed;
+
 const roundMoney = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const cleanText = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const cleanNum = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -323,7 +332,7 @@ function riderOrderView(o) {
 
 module.exports = {
   ACTIVE, FINAL, TRANSITIONS, STEP_ORDER,
-  canMove, roundMoney, cleanText, cleanNum, validCoord, haversineKm,
+  canMove, customerCancelableStatuses, roundMoney, cleanText, cleanNum, validCoord, haversineKm,
   getSettings, nextOrderNo, newTrackingToken, buildQuote, applyStatus,
   refreshRiderStatus, createKitchenTicket, syncKitchenTicket,
   publicOrderView, riderOrderView,

@@ -59,7 +59,12 @@ export interface DSettings {
   onlinePaymentNote: string; baseCharge: number; minOrderAmount: number; freeDeliveryAbove: number;
   radiusKm: number; restaurantLat: number | null; restaurantLng: number | null;
   estimatedPrepMinutes: number; areas: DArea[];
+  customerCancelWindow: 'None' | 'Pending' | 'Confirmed' | 'Preparing';
 }
+
+// Was this order cancelled by the customer (on the tracking page)?
+export const cancelledByCustomer = (o: { status: string; cancelReason?: string }) =>
+  o.status === 'Cancelled' && (o.cancelReason || '').startsWith('Customer:');
 
 /* ------------------------- status look & feel ------------------------- */
 // (class names are written out in full so Tailwind can find them)

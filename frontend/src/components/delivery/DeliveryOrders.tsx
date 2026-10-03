@@ -4,7 +4,7 @@ import {
   CreditCard, Clock3, Inbox, ExternalLink, StickyNote, History, Wifi, WifiOff, UserCheck,
 } from 'lucide-react';
 import {
-  api, onlyMine, useSocket, staffSocketAuth, playDing, money, timeAgo, clockTime, mapsLink,
+  api, onlyMine, useSocket, staffSocketAuth, playDing, money, timeAgo, clockTime, mapsLink, cancelledByCustomer,
   STATUS_META, PAY_META, ACTIVE_STATUSES,
   type DOrder, type DRider, type DStatus,
 } from '../../delivery/shared';
@@ -81,6 +81,7 @@ export default function DeliveryOrders({ role }: { role: string }) {
         playDing();
         flash(`New order ${order.orderNo} from ${order.customer.name}`);
       }
+      if (type === 'updated' && cancelledByCustomer(order)) { playDing(); flash(`${order.orderNo} was cancelled by the customer`); }
       load(); // refresh the counters
     },
   });
@@ -204,6 +205,7 @@ export default function DeliveryOrders({ role }: { role: string }) {
                     </span>
                   </div>
                   {o.riderName && <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-indigo-600"><Bike className="h-3.5 w-3.5" /> {o.riderName}</p>}
+                  {cancelledByCustomer(o) && <p className="mt-2 rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600">Cancelled by customer · {(o.cancelReason || '').replace('Customer: ', '')}</p>}
                 </button>
 
                 <div className="flex gap-2 px-4 pb-4">
