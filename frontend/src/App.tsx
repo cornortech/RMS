@@ -32,6 +32,7 @@ import { hasUnsyncedChanges } from './offline/offlineFetch';
    import Notifications from './components/Notifications';
    import DeliveryHub from './components/delivery/DeliveryHub';
 import DeliveryAlerts from './components/delivery/DeliveryAlerts';
+import { toBS } from './utils/nepaliDate';
 
 const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
 
@@ -1473,8 +1474,11 @@ const { lang, setLang } = useLang();
 
               <div className="text-[10px] space-y-0.5 border-b border-slate-200 pb-2 leading-tight">
                 <div className="flex justify-between gap-2">
-                  <span>Invoice No: <span className="font-mono font-bold text-slate-950">{invoiceToView.id}</span></span>
+                  <span>Invoice No: <span className="font-mono font-bold text-slate-950">{(invoiceToView as any).invoiceNo || invoiceToView.id}</span></span>
                   <span>Date: <span className="font-mono">{new Date(invoiceToView.createdAt).toLocaleString()}</span></span>
+                </div>
+                <div className="text-right">
+                  Date (BS): <span className="font-mono">{toBS(invoiceToView.createdAt, (invoiceToView as any).dateBS)}</span>
                 </div>
 
                 <div>
