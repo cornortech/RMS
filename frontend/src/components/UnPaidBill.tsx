@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import BillQR, { WalletId } from './BillQR';
 import { printReceipt } from '../utils/printReceipt';
+import { toBS } from '../utils/nepaliDate';
 
 // ==========================================
 // CONFIG
@@ -1726,6 +1727,9 @@ function MergedBillModal({
                 <div className="flex justify-between gap-2">
                   <span>Invoice No: <span className="font-mono font-bold text-slate-950">{invoiceLabel}</span></span>
                   <span>Date: <span className="font-mono">{new Date().toLocaleString()}</span></span>
+                </div>
+                <div className="text-right">
+                  Date (BS): <span className="font-mono">{toBS()}</span>
                 </div>
                 <div>
                   Bill To: <span className="font-bold text-slate-900">{group.billTo}</span>

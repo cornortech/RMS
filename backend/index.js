@@ -23,6 +23,8 @@ const QrConfig = require("./models/QrConfig");
 const Loyalty = require("./models/loyalty");
 const Customer = require("./models/customerName");
 const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription");
+const { nextBillNumber } = require("./utils/billNumber");
+const { toBS } = require("./utils/nepaliDate");
 
 
 const app = express();
@@ -953,13 +955,29 @@ app.post("/api/bills", requireAuth, async (req, res) => {
     try {
         const formData = req.body;
         // Securely force the restaurantId from the logged-in user session
-        const restaurantId = req.auth.restaurantId;
+                const restaurantId = req.auth.restaurantId;
+
+        // 🧾 Bill date: the time the browser says (needed for bills made offline and sent later),
+        // but only if it is sensible - not in the future and not older than 3 days. Otherwise: now.
+        const sentDate = formData.date ? new Date(formData.date) : null;
+        const nowMs = Date.now();
+        const billDate =
+            sentDate && !isNaN(sentDate) && sentDate.getTime() <= nowMs + 5 * 60 * 1000 && sentDate.getTime() >= nowMs - 3 * 86400000
+                ? sentDate
+                : new Date(nowMs);
+
+        // 🧾 IRD: the SERVER gives the official bill number (never the browser)
+        const official = await nextBillNumber(restaurantId, billDate);
 
         const newBill = await Bill.create({
             restaurantName: getValue(formData.restaurantName, req.auth.restaurantName),
             location: getValue(formData.location, "N/A"),
             panOrVat: getValue(formData.panOrVat, "N/A"),
-            invoiceNo: getValue(formData.invoiceNo, `INV-${Date.now()}`),
+                        invoiceNo: official.invoiceNo,
+            fiscalYear: official.fiscalYear,
+            billNumber: official.billNumber,
+            dateBS: toBS(billDate),
+            clientRef: typeof formData.invoiceNo === "string" ? formData.invoiceNo.slice(0, 40) : "",
             billTo: getValue(formData.billTo, "Anonymous Customer"),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             paymentMethod: getValue(formData.paymentMethod, "Cash"),
@@ -967,7 +985,7 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             eSewaPaidMoney: parseNum(getValue(formData.eSewaPaidMoney, 0)),
             khaltiPaidMoney: parseNum(getValue(formData.khaltiPaidMoney, 0)),
             fonepayPaidMoney: parseNum(getValue(formData.fonepayPaidMoney, 0)),
-            date: formData.date ? new Date(formData.date) : new Date(),
+                        date: billDate,
             items: (formData.items || []).map(i => ({
                 itemName: i.itemName || "Unknown Item",
                 quantity: parseNum(getValue(i.quantity, 1)),
@@ -1015,7 +1033,11 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             restaurantName: bill.restaurantName,
             location: bill.location,
             panOrVat: bill.panOrVat,
-            invoiceNo: bill.invoiceNo,
+                        invoiceNo: bill.invoiceNo,
+            fiscalYear: bill.fiscalYear,
+            billNumber: bill.billNumber,
+            dateBS: bill.dateBS,
+            clientRef: bill.clientRef,
             billTo: bill.billTo,
             tableNumber: bill.tableNumber,
             paymentMethod: bill.paymentMethod,

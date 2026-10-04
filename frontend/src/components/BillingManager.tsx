@@ -20,6 +20,7 @@ import {
 import { Sale, Customer } from '../types';
 import { TRANSLATIONS } from '../translations';
 import { printReceipt } from '../utils/printReceipt';
+import { toBS } from '../utils/nepaliDate';
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')).trim().replace(/\/+$/, '');
 const BILLS_URL = `${API_BASE}/api/bills`;
@@ -211,6 +212,10 @@ function InvoiceModal({
                 <div className="flex justify-between">
                   <span>Date:</span>
                   <span className="font-mono">{new Date(bill.date || bill.createdAt || '').toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Date (BS):</span>
+                  <span className="font-mono">{toBS(bill.date || bill.createdAt, (bill as any).dateBS)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Bill To:</span>

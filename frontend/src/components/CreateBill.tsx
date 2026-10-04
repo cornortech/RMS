@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { printReceipt } from '../utils/printReceipt';
 
+import { toBS } from '../utils/nepaliDate';
+
 // ==========================================
 // CONFIG
 // ==========================================
@@ -1614,6 +1616,10 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
                   <div className="flex justify-between">
                     <span>Date:</span>
                     <span className="font-mono">{new Date(bill.date).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Date (BS):</span>
+                    <span className="font-mono">{toBS(bill.date, (bill as any).dateBS)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Bill To:</span>

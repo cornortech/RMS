@@ -32,10 +32,15 @@ const restaurantBillingSchema = mongoose.Schema({
     panOrVat: {
         type: String,
     },
-    invoiceNo: {
+        invoiceNo: {
         type: String,
         required: true,
     },
+    // 🧾 IRD: official number given by the server (1, 2, 3 ... per fiscal year)
+    fiscalYear: { type: String },        // e.g. "2082/83"
+    billNumber: { type: Number },        // e.g. 125
+    dateBS: { type: String },            // Nepali date, e.g. "2082-06-16"
+    clientRef: { type: String },         // temporary number the bill had in the browser (offline bills)
     billTo: {
         type: String, 
         default: "Guest",
@@ -111,5 +116,10 @@ const restaurantBillingSchema = mongoose.Schema({
 });
 
 restaurantBillingSchema.index({ restaurantId: 1, createdAt: -1 });
+// The same bill number can never be used twice in one restaurant's fiscal year
+restaurantBillingSchema.index(
+    { restaurantId: 1, fiscalYear: 1, billNumber: 1 },
+    { unique: true, partialFilterExpression: { billNumber: { $exists: true } } }
+);
 const Bill = mongoose.model("RestaurantBill", restaurantBillingSchema);
 module.exports = Bill;
