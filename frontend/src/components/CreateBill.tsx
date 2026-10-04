@@ -1818,7 +1818,12 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         throw new Error(result.message || 'Failed to load orders.');
       }
       const served: Order[] = (result.data || []).filter(
-        (o: Order) => o.orderStatus === 'Served' && o.paymentStatus !== 'Paid' && o.paymentStatus !== 'Pending'
+             (o: Order) =>
+          o.orderStatus === 'Served' &&
+          o.paymentStatus !== 'Paid' &&
+          o.paymentStatus !== 'Pending' &&
+          // Online delivery orders are paid through the Delivery page, never billed here
+          !String((o as any).tableNumber || '').startsWith('Delivery DLV-')
       );
       setServedOrders(served);
     } catch (err: any) {
