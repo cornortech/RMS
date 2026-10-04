@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { API_BASE, money } from '../../delivery/shared';
 import MapView from '../../delivery/MapView';
-import PayQr from '../../delivery/PayQr';
 import PayQr, { walletStyle } from '../../delivery/PayQr';
 
 // =====================================================================

@@ -27,9 +27,21 @@ const loginLimiter = rateLimit({
   message: { success: false, message: "Too many attempts. Please wait 15 minutes." },
 });
 
+// 2nd lock: per rider ACCOUNT (restaurant + phone). A 4-digit PIN has only 10,000 combinations,
+// so without this someone could try many PINs from many different IP addresses.
+const accountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 6,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${String(req.body?.restaurantKey || "").slice(0, 40)}:${String(req.body?.phone || "").replace(/[^\d+]/g, "").slice(0, 20)}`,
+  message: { success: false, message: "Too many wrong attempts for this account. Please wait 15 minutes." },
+});
+
 const riderPublic = (r) => ({ _id: String(r._id), name: r.name, phone: r.phone, vehicleType: r.vehicleType, vehicleNumber: r.vehicleNumber, status: r.status });
 
-router.post("/login", loginLimiter, async (req, res) => {
+router.post("/login", loginLimiter, accountLimiter, async (req, res) => {
   try {
     const restaurantKey = typeof req.body?.restaurantKey === "string" ? req.body.restaurantKey : "";
     const phone = core.cleanText(req.body?.phone, 20).replace(/[^\d+]/g, "");
@@ -108,6 +120,7 @@ router.patch("/me/orders/:id/status", async (req, res) => {
     realtime.emitToTracking(order.trackingToken, "delivery:update", core.publicOrderView(plain));
     res.json({ success: true, order: core.riderOrderView(plain) });
   } catch (e) {
+        if (e.name === "VersionError") return res.status(409).json({ success: false, message: "This order was just updated. Please refresh." });
     console.error("🔴 RIDER STATUS ERROR:", e);
     res.status(500).json({ success: false, message: "Could not update the order." });
   }

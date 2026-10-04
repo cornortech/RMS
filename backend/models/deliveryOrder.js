@@ -82,6 +82,7 @@ const deliveryOrderSchema = new mongoose.Schema(
 deliveryOrderSchema.index({ restaurantId: 1, createdAt: -1 });
 deliveryOrderSchema.index({ restaurantId: 1, status: 1 });
 deliveryOrderSchema.index({ restaurantId: 1, riderId: 1, status: 1 });
+deliveryOrderSchema.index({ restaurantId: 1, orderNo: 1 }, { unique: true }); // no two orders of one restaurant can share a number
 
 const DeliveryOrder = mongoose.model("DeliveryOrder", deliveryOrderSchema);
 module.exports = DeliveryOrder;

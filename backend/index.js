@@ -1572,6 +1572,13 @@ app.use((err, req, res, next) => {
     res.status(500).json({ success: false, message: "Something went wrong on the server." });
 });
 
+// Safety nets: log a forgotten error instead of dying silently.
+process.on("unhandledRejection", (reason) => console.error("🔴 UNHANDLED PROMISE REJECTION:", reason));
+process.on("uncaughtException", (err) => {
+    console.error("🔴 UNCAUGHT EXCEPTION:", err);
+    process.exit(1); // the host (Render) restarts the server in a clean state
+});
+
 // Start the server ONLY after the database is connected.
 
 

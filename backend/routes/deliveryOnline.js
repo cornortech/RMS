@@ -34,6 +34,17 @@ const orderLimiter = rateLimit({
   message: { success: false, message: "Too many orders from this device. Please wait a few minutes." },
 });
 
+// General limit for every public page call (menu, price check, tracking, QR) so nobody can hammer the database.
+// 300/minute per IP is generous: many phones can share one mobile-network IP address.
+const readLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many requests. Please slow down a little." },
+});
+router.use(readLimiter);
+
 async function findRestaurant(key) {
   if (!mongoose.isValidObjectId(key)) return null;
   const r = await RestaurantUser.findById(key)
@@ -301,6 +312,22 @@ router.post("/:restaurantKey/orders", orderLimiter, async (req, res) => {
 
     const quote = await core.buildQuote({ restaurantId: restaurant.id, settings, cart: b.items, areaId: b.areaId, lat, lng });
     if (!quote.ok) return res.status(400).json({ success: false, message: quote.errors[0], errors: quote.errors });
+
+    // Double-tap protection: same phone + same total within 60 seconds → give back the order we already made
+    const dup = await DeliveryOrder.findOne({
+      restaurantId: restaurant.id,
+      "customer.phone": phone,
+      totalAmount: quote.totalAmount,
+      status: "Pending",
+      createdAt: mongoose.trusted({ $gt: new Date(Date.now() - 60 * 1000) }),
+    });
+    if (dup) {
+      return res.status(200).json({
+        success: true,
+        message: "Order already placed.",
+        data: { orderNo: dup.orderNo, trackingToken: dup.trackingToken, totalAmount: dup.totalAmount, paymentMethod: dup.paymentMethod, paymentProvider: dup.paymentProvider, payment: null },
+      });
+    }
 
     const orderNo = await core.nextOrderNo(restaurant.id);
     const hasPin = core.validCoord(lat, lng);

@@ -32,6 +32,8 @@ const only = (...roles) => (req, res, next) =>
 const rid = (req) => req.auth.restaurantId;
 const bad = (res, msg, code = 400) => res.status(code).json({ success: false, message: msg });
 const fail = (res, e, where) => {
+    // Two staff pressed a button on the same order at the same moment
+  if (e?.name === "VersionError") return res.status(409).json({ success: false, message: "Someone else just updated this order. Please refresh and try again." });
   console.error(`🔴 DELIVERY ${where}:`, e);
   return res.status(500).json({ success: false, message: "Something went wrong." });
 };
