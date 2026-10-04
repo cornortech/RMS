@@ -28,4 +28,18 @@ async function nextBillNumber(restaurantId, date = new Date()) {
   }
 }
 
-module.exports = { nextBillNumber };
+// Credit notes have their OWN numbers: CN-2083/84-00001, CN-2083/84-00002 ...
+async function nextCreditNoteNumber(restaurantId, date = new Date()) {
+  const fy = fiscalYear(date);
+  const key = `${restaurantId}:creditnote:${fy}`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const doc = await Counter.findOneAndUpdate({ _id: key }, { $inc: { seq: 1 } }, { new: true, upsert: true });
+      return `CN-${fy}-${String(doc.seq).padStart(5, "0")}`;
+    } catch (err) {
+      if (err.code !== 11000 || attempt >= 3) throw err;
+    }
+  }
+}
+
+module.exports = { nextBillNumber, nextCreditNoteNumber };

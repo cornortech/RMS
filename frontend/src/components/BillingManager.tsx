@@ -76,6 +76,12 @@ fonepayPaidMoney?: number;
   grandTotal: number;
   restaurantId: string;
   createdAt?: string;
+  // 🧾 credit note (cancelled bill)
+  status?: 'Active' | 'Cancelled';
+  creditNoteNo?: string;
+  cancelReason?: string;
+  cancelledBy?: string;
+  cancelledDateBS?: string;
 }
 
 function money(n: number): string {
@@ -115,11 +121,46 @@ function InvoiceModal({
   bill,
   lang,
   onClose,
+  onCancelled,
 }: {
   bill: RawBill;
   lang: 'en' | 'ne';
   onClose: () => void;
+  onCancelled: () => void;
 }) {
+  // 🧾 Cancel a bill with a credit note (Manager only - the server checks this too)
+  const isCancelled = bill.status === 'Cancelled';
+  const isManager = localStorage.getItem('staffRole') === 'Manager';
+  const [cancelling, setCancelling] = useState(false);
+
+  const cancelBill = async () => {
+    const reason = window.prompt(
+      lang === 'en'
+        ? `Cancel bill ${bill.invoiceNo}?\n\nThe bill is NOT deleted. It gets a credit note and is removed from sales totals.\n\nWrite the reason:`
+        : `बिल ${bill.invoiceNo} रद्द गर्ने?\n\nकारण लेख्नुहोस्:`
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert(lang === 'en' ? 'Please write a reason (at least 3 letters).' : 'कृपया कारण लेख्नुहोस्।');
+      return;
+    }
+    setCancelling(true);
+    try {
+      const res = await fetch(`${BILLS_URL}/${bill._id || bill.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.message || 'Could not cancel the bill.');
+      alert(data.message);
+      onCancelled();
+    } catch (err: any) {
+      alert(err.message || 'Could not cancel the bill.');
+    } finally {
+      setCancelling(false);
+    }
+  };
   const billItems: RawBillItem[] = bill?.items ?? [];
   const vatRate = bill?.vatRate ?? (bill?.taxableAmount > 0 ? (bill.vatCollected / bill.taxableAmount) * 100 : 0);
   const hasVat = (bill?.vatCollected ?? 0) > 0;
@@ -193,6 +234,13 @@ function InvoiceModal({
               }}
               className="space-y-2.5 shadow-md rounded-sm text-xs border border-slate-200"
             >
+              {isCancelled && (
+                <div style={{ border: '2px solid #000', textAlign: 'center', padding: '2px 0', fontWeight: 900 }}>
+                  *** CANCELLED ***
+                  <div style={{ fontSize: '9px' }}>Credit Note: {bill.creditNoteNo}</div>
+                  {bill.cancelledDateBS && <div style={{ fontSize: '9px' }}>Date (BS): {bill.cancelledDateBS}</div>}
+                </div>
+              )}
               <div className="text-center space-y-0.5 pb-2 border-b-2 border-black border-dashed">
                 <h3 className="text-xs font-black uppercase tracking-tight text-black">
                   {bill.restaurantName}
@@ -299,7 +347,25 @@ function InvoiceModal({
             </div>
           </div>
 
+          {isCancelled && (
+            <div className="relative z-10 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+              <b>Cancelled</b> · Credit note <span className="font-mono">{bill.creditNoteNo}</span>
+              {bill.cancelReason && <div>Reason: {bill.cancelReason}</div>}
+              {bill.cancelledBy && <div>By: {bill.cancelledBy}</div>}
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-2.5 pt-1 relative z-10 flex-shrink-0">
+            {!isCancelled && isManager && (
+              <button
+                type="button"
+                onClick={cancelBill}
+                disabled={cancelling}
+                className="mr-auto px-4 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling…' : 'Cancel bill'}
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -357,7 +423,7 @@ export default function BillingManager({
     }
 
     try {
-      const url = `${BILLS_URL}?restaurantId=${encodeURIComponent(currentRESTAURANTId)}`;
+      const url = `${BILLS_URL}?restaurantId=${encodeURIComponent(currentRESTAURANTId)}&includeCancelled=1`;
       const res = await fetch(url);
       const result = await res.json();
       if (!res.ok || !result.success) {
@@ -390,7 +456,9 @@ export default function BillingManager({
   }, [searchQuery, bills, Customers]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const todaysInvoices = bills.filter((inv) => (inv.date || inv.createdAt || '').startsWith(todayStr));
+  const todaysInvoices = bills.filter(
+    (inv) => inv.status !== 'Cancelled' && (inv.date || inv.createdAt || '').startsWith(todayStr)
+  );
 
   const cashToday = todaysInvoices.reduce((sum, s) => sum + (s.cashPaidMoney || 0), 0);
   const esewaToday = todaysInvoices.reduce((sum, s) => sum + (s.eSewaPaidMoney || 0), 0);
@@ -609,7 +677,14 @@ export default function BillingManager({
 
                   return (
                     <tr key={invoice.invoiceNo} className="hover:bg-violet-50/30 transition-colors group">
-                      <td className="px-4 py-3 font-mono text-slate-800 font-extrabold">{invoice.invoiceNo}</td>
+                      <td className="px-4 py-3 font-mono text-slate-800 font-extrabold">
+                        <span className={invoice.status === 'Cancelled' ? 'line-through text-slate-400' : ''}>{invoice.invoiceNo}</span>
+                        {invoice.status === 'Cancelled' && (
+                          <span className="ml-1.5 inline-flex rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase text-rose-700" title={`Credit note ${invoice.creditNoteNo || ''}`}>
+                            Cancelled
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         {pat ? (
                           <div className="space-y-0.5">
@@ -676,6 +751,10 @@ export default function BillingManager({
           bill={viewingBill}
           lang={lang}
           onClose={() => setViewingBill(null)}
+          onCancelled={() => {
+            setViewingBill(null);
+            fetchBills();
+          }}
         />
       )}
     </div>

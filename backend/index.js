@@ -23,7 +23,7 @@ const QrConfig = require("./models/QrConfig");
 const Loyalty = require("./models/loyalty");
 const Customer = require("./models/customerName");
 const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription");
-const { nextBillNumber } = require("./utils/billNumber");
+const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
 
 
@@ -1022,7 +1022,10 @@ app.get("/api/bills", requireAuth, async (req, res) => {
     try {
         const restaurantId = req.auth.restaurantId;
         // Admins can see all if needed, but standard users are strictly scoped
-        const filter = req.auth.isAdmin ? {} : { restaurantId };
+              const filter = req.auth.isAdmin ? {} : { restaurantId };
+        // Cancelled bills are left out of every report. Billing & VAT Audit asks for them
+        // with ?includeCancelled=1 so it can show them with their credit note.
+        if (req.query.includeCancelled !== "1") filter.status = mongoose.trusted({ $ne: "Cancelled" });
 
         const dbBills = await Bill.find(filter).sort({ createdAt: -1 });
 
@@ -1038,6 +1041,12 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             billNumber: bill.billNumber,
             dateBS: bill.dateBS,
             clientRef: bill.clientRef,
+            status: bill.status || "Active",
+            creditNoteNo: bill.creditNoteNo,
+            cancelReason: bill.cancelReason,
+            cancelledBy: bill.cancelledBy,
+            cancelledAt: bill.cancelledAt,
+            cancelledDateBS: bill.cancelledDateBS,
             billTo: bill.billTo,
             tableNumber: bill.tableNumber,
             paymentMethod: bill.paymentMethod,
@@ -1084,6 +1093,7 @@ app.patch("/api/bills/:id", requireAuth, async (req, res) => {
 
         // Ensure users can only update bills belonging to their restaurant (unless admin)
         const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+        query.status = mongoose.trusted({ $ne: "Cancelled" }); // a cancelled bill can't be paid
 
         const updatedBill = await Bill.findOneAndUpdate(
             query,
@@ -1109,6 +1119,64 @@ app.patch("/api/bills/:id", requireAuth, async (req, res) => {
         });
     }
 });
+
+
+// ==========================================
+// 🧾 CANCEL A BILL (credit note) - Manager only
+// The bill is NEVER deleted (IRD). It is marked Cancelled, gets its own
+// credit note number, and drops out of every sales report.
+// ==========================================
+app.post("/api/bills/:id/cancel", requireAuth, requireManager, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid bill." });
+        }
+        const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 200) : "";
+        if (reason.length < 3) {
+            return res.status(400).json({ success: false, message: "Please write the reason for cancelling." });
+        }
+
+        const now = new Date();
+        const who = req.auth.isAdmin ? "Admin" : `${req.auth.role || "Staff"}${req.auth.sid ? ` (${String(req.auth.sid).slice(-6)})` : ""}`;
+
+        // Step 1 - claim the bill in ONE step, so two clicks can't cancel it twice
+        const bill = await Bill.findOneAndUpdate(
+            { _id: id, restaurantId: req.auth.restaurantId, status: mongoose.trusted({ $ne: "Cancelled" }) },
+            { $set: { status: "Cancelled", cancelReason: reason, cancelledBy: who, cancelledAt: now, cancelledDateBS: toBS(now) } },
+            { new: true }
+        );
+        if (!bill) {
+            const exists = await Bill.exists({ _id: id, restaurantId: req.auth.restaurantId });
+            return res.status(exists ? 400 : 404).json({
+                success: false,
+                message: exists ? "This bill is already cancelled." : "Bill not found.",
+            });
+        }
+
+        // Step 2 - its own credit note number
+        bill.creditNoteNo = await nextCreditNoteNumber(req.auth.restaurantId, now);
+        await bill.save();
+
+        // Step 3 - the order behind it no longer counts as a sale
+        if (bill.orderId && mongoose.isValidObjectId(bill.orderId)) {
+            await Order.updateOne(
+                { _id: bill.orderId, restaurantId: req.auth.restaurantId },
+                { $set: { paymentStatus: "Refunded" } }
+            );
+        }
+
+        return res.json({
+            success: true,
+            message: `Bill ${bill.invoiceNo} cancelled. Credit note ${bill.creditNoteNo}.`,
+            data: bill,
+        });
+    } catch (error) {
+        console.error("🔴 BILL CANCEL CRASH:", error);
+        return res.status(500).json({ success: false, message: "Could not cancel the bill." });
+    }
+});
+
 
 
 // ==========================================

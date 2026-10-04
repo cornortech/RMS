@@ -40,7 +40,14 @@ const restaurantBillingSchema = mongoose.Schema({
     fiscalYear: { type: String },        // e.g. "2082/83"
     billNumber: { type: Number },        // e.g. 125
     dateBS: { type: String },            // Nepali date, e.g. "2082-06-16"
-    clientRef: { type: String },         // temporary number the bill had in the browser (offline bills)
+        clientRef: { type: String },         // temporary number the bill had in the browser (offline bills)
+    // 🧾 IRD: a bill is NEVER deleted. A wrong bill is cancelled with a credit note.
+    status: { type: String, enum: ["Active", "Cancelled"], default: "Active" },
+    creditNoteNo: { type: String },      // e.g. "CN-2083/84-00001"
+    cancelReason: { type: String },
+    cancelledBy: { type: String },
+    cancelledAt: { type: Date },
+    cancelledDateBS: { type: String },
     billTo: {
         type: String, 
         default: "Guest",
