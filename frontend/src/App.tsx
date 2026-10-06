@@ -6,7 +6,7 @@ import {
   FileText, Printer, X, LogOut, Menu, Lock, User2, AlertCircle, Loader2,
   Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer,
    Languages, ArrowLeft, Store, KeyRound,Bell,
-  Bike,
+   Bike, Fingerprint,
 } from 'lucide-react';
 import { printReceipt } from './utils/printReceipt';
 import { useLang } from './i18n';
@@ -25,6 +25,7 @@ import BillingManager from './components/BillingManager';
 import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import StaffManager from './components/StaffManager';
+import Attendance from './components/Attendance';
 import RESTAURANTSettings from './components/Setting';
 import OrdersPage from './components/Orders';
 import OfflineBanner from './offline/OfflineBanner';
@@ -47,7 +48,7 @@ type StaffRole = 'Manager' | 'Waiter' | 'Kitchen Staff' | 'Cashier';
 type AppView =
   | 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings'
   | 'orders' | 'tables' | 'kitchen' | 'createbill' | 'totalorder'
-  | 'unpaidbill' | 'stock' | 'notifications' | 'delivery';
+  | 'unpaidbill' | 'stock' | 'notifications' | 'delivery' | 'attendance';
 
 interface RoleConfig {
   label: StaffRole;
@@ -58,7 +59,7 @@ interface RoleConfig {
 const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   Manager: {
     label: 'Manager',
-    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'stock','notifications','delivery'],
+    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'stock','notifications','delivery', 'attendance'],
     defaultView: 'dashboard',
   },
   Waiter: {
@@ -151,6 +152,7 @@ const NAV_ITEMS: NavItem[] = [
   { view: 'billing', icon: ShieldCheck, group: 'billing', label: { en: 'Billing & VAT Audit', ne: 'बिलिङ र भ्याट अडिट' } },
 
   { view: 'staff', icon: Users, group: 'admin', label: { en: 'Manage Staff', ne: 'कर्मचारी व्यवस्थापन' } },
+    { view: 'attendance', icon: Fingerprint, group: 'admin', label: { en: 'Attendance', ne: 'हाजिरी' } },
   { view: 'settings', icon: Settings, group: 'admin', label: { en: 'Settings', ne: 'सेटिङ्स' } },
 ];
 
@@ -1373,6 +1375,9 @@ const { lang, setLang } = useLang();
             {canAccess('staff') && currentView === 'staff' && (
               <StaffManager RESTAURANTName={activeRESTAURANTName} />
             )}
+
+            
+            {canAccess('attendance') && currentView === 'attendance' && <Attendance />}
 
             {canAccess('settings') && currentView === 'settings' && <RESTAURANTSettings />}
           </div>

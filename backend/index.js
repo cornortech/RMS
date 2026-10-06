@@ -194,6 +194,9 @@ const syncRemainingTime = async (restaurant) => {
 // ==========================================
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
+// Fingerprint machines send their scans here (no login - they are checked by serial number)
+app.use("/iclock", require("./routes/iclock"));
+
 // 10 FAILED attempts per IP per 15 min. Successful logins are not counted.
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -387,6 +390,7 @@ app.use('/api/qr', requireAuth, require('./routes/qr'));
 app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/delivery", require("./routes/delivery")); // 🛵 DELIVERY: staff/admin pages
+app.use("/api/attendance", requireManager, require("./routes/attendance")); // 🖐️ ATTENDANCE: Manager / Admin only
 
 
 

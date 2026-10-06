@@ -8,6 +8,8 @@ const restaurantStaffSchema = new mongoose.Schema(
     password: { type: String, required: true, select: false },
     role: { type: String, enum: ["Manager", "Waiter", "Kitchen Staff", "Cashier"], required: true },
     isActive: { type: Boolean, default: true },
+        // Fingerprint machine link: the user ID on the machine (e.g. "101"). Fingerprints stay inside the machine.
+    deviceUserId: { type: String, default: "" },
   },
   { timestamps: true }
 );
