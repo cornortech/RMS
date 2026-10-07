@@ -415,6 +415,54 @@ router.put("/menu-extras/:menuItemId", only(...MANAGER), async (req, res) => {
   }
 });
 
+
+
+// EARNINGS  GET /earnings
+// Money earned from DELIVERED orders, for the Dashboard and Delivery page.
+// Returns a small list (last 400 days) + the all-time total.
+// ---------------------------------------------------------------------
+router.get("/earnings", only("Manager", "Cashier"), async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 400 * 86400000);
+    const earned = { restaurantId: rid(req), status: "Delivered", paymentStatus: mongoose.trusted({ $ne: "Refunded" }) };
+
+    const [list, allTime] = await Promise.all([
+      DeliveryOrder.find({ ...earned, deliveredAt: mongoose.trusted({ $gte: since }) })
+        .select("orderNo totalAmount deliveryCharge paymentMethod deliveredAt createdAt")
+        .sort({ deliveredAt: -1 })
+        .limit(10000)
+        .lean(),
+      DeliveryOrder.aggregate([
+        { $match: { restaurantId: rid(req), status: "Delivered", paymentStatus: { $ne: "Refunded" } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: "$totalAmount" }, charges: { $sum: "$deliveryCharge" } } },
+      ]),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        orders: list.map((o) => ({
+          orderNo: o.orderNo,
+          at: o.deliveredAt || o.createdAt,
+          total: Number(o.totalAmount) || 0,
+          charge: Number(o.deliveryCharge) || 0,
+          method: o.paymentMethod,
+        })),
+        allTime: {
+          count: allTime[0]?.count || 0,
+          revenue: allTime[0]?.revenue || 0,
+          charges: allTime[0]?.charges || 0,
+        },
+      },
+    });
+  } catch (e) {
+    fail(res, e, "earnings");
+  }
+});
+
+// ---------------------------------------------------------------------
+
+
 // ---------------------------------------------------------------------
 // REPORTS   GET /reports?from=ISO&to=ISO&tz=Asia/Kathmandu
 // ---------------------------------------------------------------------

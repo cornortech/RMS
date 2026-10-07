@@ -4,6 +4,7 @@ import DeliveryOrders from './DeliveryOrders';
 import RiderManager from './RiderManager';
 import DeliverySettings from './DeliverySettings';
 import DeliveryReports from './DeliveryReports';
+import DeliveryEarnings from './DeliveryEarnings';
 
 // The "Delivery" section of the RMS. One page, four tabs.
 type Tab = 'orders' | 'riders' | 'settings' | 'reports';
@@ -43,6 +44,7 @@ export default function DeliveryHub({ role }: { role: string }) {
         </nav>
       </div>
 
+      {(isManager || role === 'Cashier') && (tab === 'orders' || tab === 'reports') && <DeliveryEarnings />}
       {tab === 'orders' && <DeliveryOrders role={role} />}
       {tab === 'riders' && <RiderManager canEdit={isManager} />}
       {tab === 'reports' && <DeliveryReports />}

@@ -65,6 +65,8 @@ const TEXT = {
     billsToday: 'Bills today',
     avgBill: 'Avg. bill',
     totalRevenue: 'Total Revenue',
+        dineIn: 'Dine-in',
+    deliveryLbl: 'Delivery',
     allTime: 'All-time total',
     totalOrders: 'Total Orders',
     allTimeOrders: 'All-time orders',
@@ -147,6 +149,8 @@ const TEXT = {
     billsToday: 'आजका बिलहरू',
     avgBill: 'औसत बिल',
     totalRevenue: 'कुल आम्दानी',
+        dineIn: 'रेस्टुरेन्ट',
+    deliveryLbl: 'डेलिभरी',
     allTime: 'सबै समयको जम्मा',
     totalOrders: 'कुल अर्डर',
     allTimeOrders: 'सबै समयका अर्डरहरू',
@@ -1321,6 +1325,31 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     }
   };
 
+    // ---- delivery earnings (delivered online orders) ----
+  const [deliveryList, setDeliveryList] = useState<{ at: string; total: number; method?: string }[]>([]);
+  const [deliveryAllTime, setDeliveryAllTime] = useState(0);
+
+  const fetchDelivery = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/delivery/earnings`);
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setDeliveryList(result.data?.orders || []);
+        setDeliveryAllTime(Number(result.data?.allTime?.revenue) || 0);
+      }
+    } catch (err) {
+      console.error('Failed to load delivery earnings', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchDelivery();
+  }, [restaurantId]);
+
+  // A bill made from a delivery kitchen ticket is already counted as delivery money
+  const isDeliveryBill = (inv: InvoiceRecord) => inv.tableNumber.startsWith('Delivery DLV-');
+
   useEffect(() => {
     if (!restaurantId) return;
     fetchOrders(restaurantId);
@@ -1409,22 +1438,33 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     if (!restaurantId) return;
     fetchBills(restaurantId);
     fetchOrders(restaurantId);
+    fetchDelivery();
     fetchStaff();
     fetchPlanTime(restaurantId);
   };
 
   // ---- daily totals ----
   const dayTotals = useMemo(() => {
-    const map = new Map<string, { total: number; count: number }>();
+    const map = new Map<string, { total: number; count: number; dine: number; delivery: number }>();
     invoices.forEach((inv) => {
+      if (isDeliveryBill(inv)) return;
       const key = localKey(new Date(inv.date));
-      const cur = map.get(key) || { total: 0, count: 0 };
+      const cur = map.get(key) || { total: 0, count: 0, dine: 0, delivery: 0 };
       cur.total += inv.grandTotal;
+      cur.dine += inv.grandTotal;
       cur.count += 1;
       map.set(key, cur);
     });
+    // 🛵 add delivery money to the same day
+    deliveryList.forEach((d) => {
+      const key = localKey(new Date(d.at));
+      const cur = map.get(key) || { total: 0, count: 0, dine: 0, delivery: 0 };
+      cur.total += d.total;
+      cur.delivery += d.total;
+      map.set(key, cur);
+    });
     return map;
-  }, [invoices]);
+  }, [invoices, deliveryList]);
 
   const startOfToday = () => {
     const d = new Date();
@@ -1437,7 +1477,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     return d;
   };
 
-  const todayData = dayTotals.get(localKey(daysAgo(0))) || { total: 0, count: 0 };
+  const todayData = dayTotals.get(localKey(daysAgo(0))) || { total: 0, count: 0, dine: 0, delivery: 0 };
   const yesterdayData = dayTotals.get(localKey(daysAgo(1))) || { total: 0, count: 0 };
   const todayVsYesterday =
     yesterdayData.total > 0
@@ -1448,8 +1488,13 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
 
   const dailyRevenue = todayData.total;
   const dailySalesCount = todayData.count;
-  const avgBillToday = dailySalesCount > 0 ? dailyRevenue / dailySalesCount : 0;
-  const totalRevenue = useMemo(() => invoices.reduce((sum, inv) => sum + inv.grandTotal, 0), [invoices]);
+  const avgBillToday = dailySalesCount > 0 ? todayData.dine / dailySalesCount : 0;
+  const dineInAllTime = useMemo(
+    () => invoices.reduce((sum, inv) => (isDeliveryBill(inv) ? sum : sum + inv.grandTotal), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [invoices]
+  );
+  const totalRevenue = dineInAllTime + deliveryAllTime;
   const totalOrdersCount = orders.length;
   const completedOrdersCount = useMemo(() => orders.filter(isCompletedOrder).length, [orders]);
 
@@ -1542,14 +1587,21 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     const firstKey = series[0]?.key || '';
     const map = new Map<string, number>();
     invoices.forEach((inv) => {
-      if (localKey(new Date(inv.date)) >= firstKey) {
+      if (!isDeliveryBill(inv) && localKey(new Date(inv.date)) >= firstKey) {
         map.set(inv.paymentMethod, (map.get(inv.paymentMethod) || 0) + inv.grandTotal);
+      }
+    });
+    deliveryList.forEach((d) => {
+      if (localKey(new Date(d.at)) >= firstKey) {
+        const label = d.method === 'Online' ? 'Delivery (Online)' : 'Delivery (COD)';
+        map.set(label, (map.get(label) || 0) + d.total);
       }
     });
     const list = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
     const sum = list.reduce((s, [, v]) => s + v, 0);
     return { list, sum };
-  }, [invoices, series]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, series, deliveryList]);
 
   // ---- SALES BY STAFF ----
   const staffStats = useMemo(() => {
@@ -1811,6 +1863,16 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
         )}
         {!billsLoading && (
           <div className="mt-3 flex items-center gap-2">
+                    {!billsLoading && (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full border border-violet-200 bg-white/80 px-2.5 py-1 text-violet-800">
+              🍽️ {T.dineIn}: {formatNPR(todayData.dine)}
+            </span>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+              🛵 {T.deliveryLbl}: {formatNPR(todayData.delivery)}
+            </span>
+          </div>
+        )}
             <GrowthPill pct={todayVsYesterday} />
             <span className="text-xs font-medium text-gray-600">{T.vsYesterday}</span>
           </div>
@@ -1996,8 +2058,12 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
             )}
           </div>
         </div>
-        <div className="relative mt-5 pt-3 border-t border-gray-100 text-xs font-semibold text-gray-600">
-          {T.allTime}
+              <div className="relative mt-5 pt-3 border-t border-gray-100 text-xs font-semibold text-gray-600">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>{T.allTime}</span>
+            <span>🍽️ {T.dineIn} {compact(dineInAllTime)}</span>
+            <span>🛵 {T.deliveryLbl} {compact(deliveryAllTime)}</span>
+          </span>
         </div>
       </div>
     );
