@@ -24,6 +24,7 @@ import {
   Check,
   History,
 } from 'lucide-react';
+import MenuImage from './MenuImage';
 
 // ==========================================
 // CONFIG
@@ -114,6 +115,7 @@ interface MenuItem {
   price: number;
   status: string;
   available: boolean;
+  imageUrl: string;
 }
 
 interface TableItem {
@@ -154,6 +156,7 @@ const mapRawToMenuItem = (raw: any): MenuItem => {
     price: Number(raw.price ?? raw.itemPrice) || 0,
     status,
     available: status === 'Available',
+    imageUrl: raw.imageUrl || '',
   };
 };
 
@@ -986,8 +989,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                         key={line.menuItemId}
                         className="co-card flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-2.5"
                       >
-                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl ring-1 ring-inset ${cat.tile}`}>
-                          {cat.emoji}
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg text-xl ring-1 ring-inset ${cat.tile}`}>
+                          <MenuImage src={menuItems.find((m) => m.id === line.menuItemId)?.imageUrl} alt={line.name} fallback={cat.emoji} />
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold text-slate-900">{line.name}</p>
@@ -1215,11 +1218,11 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                       >
                         <div className="flex items-start gap-3">
                           <div
-                            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ring-1 ring-inset ${cat.tile} ${
+                            className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-2xl ring-1 ring-inset ${cat.tile} ${
                               !item.available ? 'opacity-50 grayscale' : ''
                             }`}
                           >
-                            {cat.emoji}
+                            <MenuImage src={item.imageUrl} alt={item.name} fallback={cat.emoji} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <h3 className={`truncate text-[15px] font-bold ${item.available ? 'text-slate-900' : 'text-slate-400'}`}>
@@ -1287,11 +1290,11 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <span
-                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg ring-1 ring-inset ${cat.tile} ${
+                                  className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg text-lg ring-1 ring-inset ${cat.tile} ${
                                     !item.available ? 'opacity-50 grayscale' : ''
                                   }`}
                                 >
-                                  {cat.emoji}
+                                  <MenuImage src={item.imageUrl} alt={item.name} fallback={cat.emoji} />
                                 </span>
                                 <div className="min-w-0">
                                   <p className={`font-semibold ${item.available ? 'text-slate-900' : 'text-slate-400'}`}>{item.name}</p>

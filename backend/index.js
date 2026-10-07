@@ -25,6 +25,7 @@ const Customer = require("./models/customerName");
 const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription");
 const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
+const { deleteImage } = require("./utils/cloudinary");
 
 
 const app = express();
@@ -386,6 +387,7 @@ guard("/api/loyalty", { POST: [M, C], PUT: [M, C], PATCH: [M, C], DELETE: [M] })
 
 app.use("/api/loyalty", requireAuth, loyaltyRoutes);
 app.use('/api/qr', requireAuth, require('./routes/qr'));
+app.use("/api/menu", require("./routes/menuImage")); // 📷 menu photos (Cloudinary)
 
 app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
@@ -503,6 +505,7 @@ app.get("/api/menu", async (req, res) => {
                 price: item.price,
                 status: item.status,
                 skuBarcodeReference: item.skuBarcodeReference || "",
+                imageUrl: item.imageUrl || "",
                 restaurantId: item.restaurantId,
                 isCombo: Boolean(item.isCombo) || item.category === "Combo",
                 comboItems,
@@ -615,6 +618,8 @@ app.delete("/api/menu/:id", async (req, res) => {
         if (!deletedItem) {
             return res.status(404).json({ success: false, message: "Menu item not found." });
         }
+
+                deleteImage(deletedItem.imagePublicId); // 📷 remove its photo from Cloudinary too
 
         // Tell the caller which combos still reference this item (the UI shows them as "removed")
         const affectedCombos = await Menu.find(

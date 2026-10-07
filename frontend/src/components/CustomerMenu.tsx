@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { UtensilsCrossed, BellRing, ArrowLeft, Search, Loader2, CheckCircle2, AlertCircle, MapPin } from 'lucide-react';
+import MenuImage from './MenuImage';
 
 // This page is opened by customers who scan a table QR code.
 // URL looks like:  /scan/<restaurantKey>/<tableId>
@@ -16,6 +17,7 @@ interface MenuItem {
   status: string;
   isCombo: boolean;
   comboItems: { itemName: string; quantity: number }[];
+  imageUrl?: string;
 }
 
 interface PageData {
@@ -280,7 +282,10 @@ export default function CustomerMenu() {
                 return (
                   <div key={m._id} className={`rounded-xl bg-white p-4 ring-1 ring-slate-100 ${soldOut ? 'opacity-60' : ''}`}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-3xl ring-1 ring-slate-100">
+                        <MenuImage src={m.imageUrl} alt={m.itemName} fallback={CATEGORY_EMOJI[m.isCombo ? 'Combo' : m.category] || '🍽️'} />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold text-slate-900">{m.itemName}</p>
                         {m.description && <p className="mt-0.5 text-sm text-slate-500">{m.description}</p>}
                         {m.isCombo && m.comboItems.length > 0 && (

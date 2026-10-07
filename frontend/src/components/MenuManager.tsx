@@ -22,7 +22,9 @@ import {
   Sparkles,
   Wand2,
   BadgePercent,
+  ImagePlus,
 } from 'lucide-react';
+import MenuImage from './MenuImage';
 import { createPortal } from 'react-dom';
 import { TRANSLATIONS } from '../translations';
 
@@ -100,6 +102,7 @@ interface MenuItemType {
   createdAt: string;
   isCombo?: boolean;
   comboItems?: ComboItem[];
+  imageUrl?: string;
 }
 
 interface MenuFormState {
@@ -173,6 +176,43 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
   const [comboSearch, setComboSearch] = useState('');
   const [formTab, setFormTab] = useState<FormTab>('details');
   const [mounted, setMounted] = useState(false);
+
+
+  
+  // 📷 Photo in the Add / Edit form
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [removeImage, setRemoveImage] = useState(false);
+
+  const resetPhoto = (url = '') => {
+    setImageFile(null);
+    setImagePreview(url);
+    setRemoveImage(false);
+  };
+
+  const handlePickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets you pick the same file again
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setFormError(en ? 'Please choose a JPG, PNG or WebP photo.' : 'कृपया JPG, PNG वा WebP फोटो छान्नुहोस्।');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError(en ? 'Photo is too big. Please use a photo under 5 MB.' : 'फोटो धेरै ठूलो छ। ५ MB भन्दा सानो प्रयोग गर्नुहोस्।');
+      return;
+    }
+    setFormError('');
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveImage(false);
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setRemoveImage(true);
+  };
 
   // Delete + quick status
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -402,6 +442,7 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
     setFormMode('add');
     setEditingId(null);
     setFormData({ ...EMPTY_FORM, category: presetCategory || EMPTY_FORM.category, restaurantId: getLoggedInRestaurantId() });
+        resetPhoto();
     setFormError('');
     setComboSearch('');
     setFormTab('details');
@@ -426,6 +467,7 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
         price: Number(l.price) || 0,
       })),
     });
+        resetPhoto(item.imageUrl || '');
     setFormError('');
     setComboSearch('');
     setFormTab('details');
@@ -437,6 +479,7 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
     setShowFormModal(false);
     setFormData(EMPTY_FORM);
     setEditingId(null);
+        resetPhoto();
     setFormError('');
     setComboSearch('');
     setFormTab('details');
@@ -496,9 +539,36 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.message || 'Request failed.');
 
+      // 📷 Save / remove the photo (the item itself is already saved)
+      const savedId = formMode === 'edit' && editingId ? editingId : String(result.data?._id || result.data?.id || '');
+      let newImageUrl: string | undefined;
+      let photoError = '';
+      if (savedId && imageFile) {
+        try {
+          const fd = new FormData();
+          fd.append('image', imageFile);
+          const up = await fetch(`${MENU_URL}/${savedId}/image`, { method: 'POST', body: fd });
+          const upResult = await up.json().catch(() => ({}));
+          if (!up.ok || !upResult.success) throw new Error(upResult.message || 'Photo upload failed.');
+          newImageUrl = upResult.data?.imageUrl || '';
+        } catch (err: any) {
+          photoError = err.message || 'Photo upload failed.';
+        }
+      } else if (savedId && removeImage && formMode === 'edit') {
+        const del = await fetch(`${MENU_URL}/${savedId}/image`, { method: 'DELETE' }).catch(() => null);
+        if (del && del.ok) newImageUrl = '';
+      }
+
       await fetchMenuItems();
       if (formMode === 'edit' && selectedMenuItem?._id === editingId) {
-        setSelectedMenuItem((prev) => (prev ? { ...prev, ...payload } : prev));
+        setSelectedMenuItem((prev) =>
+          prev ? { ...prev, ...payload, ...(newImageUrl !== undefined ? { imageUrl: newImageUrl } : {}) } : prev
+        );
+      }
+      if (photoError) {
+        showToast(`${en ? 'Item saved, but photo failed:' : 'वस्तु सेभ भयो, तर फोटो भएन:'} ${photoError}`, 'error');
+        closeModal();
+        return;
       }
       showToast(
         formMode === 'edit'
@@ -1010,8 +1080,8 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                       </div>
 
                       <div className="flex items-start gap-3 pr-16">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-2xl shadow-sm ring-1 ring-fuchsia-100 ${off ? 'opacity-60 grayscale' : ''}`}>
-                          {cat.emoji}
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white text-2xl shadow-sm ring-1 ring-fuchsia-100 ${off ? 'opacity-60 grayscale' : ''}`}>
+                          <MenuImage src={item.imageUrl} alt={item.itemName} fallback={cat.emoji} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <h3 className={`truncate text-[15px] font-bold ${off ? 'text-slate-500' : 'text-slate-900'}`}>{item.itemName}</h3>
@@ -1066,8 +1136,8 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                     style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ring-1 ring-inset ${cat.tile} ${off ? 'opacity-60 grayscale' : ''}`}>
-                        {cat.emoji}
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-2xl ring-1 ring-inset ${cat.tile} ${off ? 'opacity-60 grayscale' : ''}`}>
+                        <MenuImage src={item.imageUrl} alt={item.itemName} fallback={cat.emoji} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <h3 className={`truncate text-[15px] font-bold ${off ? 'text-slate-500' : 'text-slate-900'}`}>{item.itemName}</h3>
@@ -1113,7 +1183,9 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg ring-1 ring-inset ${cat.tile}`}>{cat.emoji}</span>
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg text-lg ring-1 ring-inset ${cat.tile}`}>
+                              <MenuImage src={item.imageUrl} alt={item.itemName} fallback={cat.emoji} />
+                            </span>
                             <div className="min-w-0">
                               <p className="flex items-center gap-1.5 font-semibold text-slate-900">
                                 {item.itemName}
@@ -1169,7 +1241,9 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                         <X className="h-4 w-4" />
                       </button>
                       <div className="flex items-end gap-3">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-4xl shadow-sm">{cat.emoji}</div>
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white text-4xl shadow-sm">
+                          <MenuImage src={selectedMenuItem.imageUrl} alt={selectedMenuItem.itemName} fallback={cat.emoji} size={300} />
+                        </div>
                         {combo && <ComboStack lines={selectedMenuItem.comboItems || []} />}
                       </div>
                       <h3 className="mt-3 text-lg font-bold leading-tight text-slate-900">{selectedMenuItem.itemName}</h3>
@@ -1484,6 +1558,37 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                     </div>
 
                     <div className="mm-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+                      {/* 📷 Photo */}
+                      <div className="space-y-1.5">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                          {en ? 'Photo (optional)' : 'फोटो (ऐच्छिक)'}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-3xl ring-1 ring-inset ${getCat(formData.category).tile}`}>
+                            <MenuImage src={imagePreview} fallback={getCat(formData.category).emoji} size={300} />
+                          </div>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 ring-1 ring-inset ring-purple-100 transition-colors hover:bg-purple-100">
+                              <ImagePlus className="h-4 w-4" />
+                              {imagePreview ? (en ? 'Change photo' : 'फोटो बदल्नुहोस्') : (en ? 'Upload photo' : 'फोटो अपलोड गर्नुहोस्')}
+                              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePickImage} />
+                            </label>
+                            {imagePreview && (
+                              <button
+                                type="button"
+                                onClick={handleRemoveImage}
+                                className="cursor-pointer text-xs font-semibold text-rose-600 hover:underline"
+                              >
+                                {en ? 'Remove photo' : 'फोटो हटाउनुहोस्'}
+                              </button>
+                            )}
+                            <span className="text-[11px] text-slate-400">
+                              {en ? 'JPG, PNG or WebP · max 5 MB. No photo = category icon.' : 'JPG, PNG वा WebP · ५ MB सम्म। फोटो छैन भने श्रेणी आइकन देखिन्छ।'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Category */}
                       <div className="space-y-1.5">
                         <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">

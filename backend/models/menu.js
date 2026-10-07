@@ -18,6 +18,10 @@ const restaurantMenuSchema = new mongoose.Schema(
         price: { type: Number, required: true, min: 0 },
         status: { type: String, default: "Available" },
         skuBarcodeReference: { type: String, default: "" },
+        
+        // 📷 Photo (the file lives in Cloudinary, we only keep its link here)
+        imageUrl: { type: String, default: "" },
+        imagePublicId: { type: String, default: "" }, // Cloudinary's name for the file (used to delete it)
         restaurantId: { type: String, required: true, index: true },
 
         // Combo support

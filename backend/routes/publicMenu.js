@@ -62,7 +62,7 @@ router.get("/menu/:restaurantKey/:tableId", async (req, res) => {
       restaurantId: restaurant.id,
             status: mongoose.trusted({ $in: ["Available", "Sold Out"] }),
     })
-      .select("itemName description category price status isCombo comboItems")
+      .select("itemName description category price status isCombo comboItems imageUrl")
       .sort({ category: 1, itemName: 1 })
       .lean();
 
@@ -80,6 +80,7 @@ router.get("/menu/:restaurantKey/:tableId", async (req, res) => {
           price: m.price,
           status: m.status,
           isCombo: m.isCombo,
+          imageUrl: m.imageUrl || "",
           comboItems: (m.comboItems || []).map((c) => ({ itemName: c.itemName, quantity: c.quantity })),
         })),
       },
