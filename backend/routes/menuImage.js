@@ -8,7 +8,7 @@
 const express = require("express");
 const multer = require("multer");
 const Menu = require("../models/menu");
-const { isConfigured, uploadMenuImage, deleteImage } = require("../utils/cloudinary");
+const { isConfigured, shrinkImage, uploadMenuImage, deleteImage } = require("../utils/cloudinary");
 
 const router = express.Router();
 
@@ -40,12 +40,29 @@ router.post("/:id/image", takeImage, async (req, res) => {
     const item = await Menu.findOne({ _id: req.params.id, restaurantId: req.auth.restaurantId });
     if (!item) return res.status(404).json({ success: false, message: "Menu item not found." });
 
+    // 1) Is it a real photo? (checked on our server)
+    let small;
+    try {
+      small = await shrinkImage(req.file.buffer);
+    } catch (e) {
+      console.error("🔴 MENU IMAGE READ:", e.message);
+      return res.status(400).json({ success: false, message: "This file is not a valid photo. Please use a JPG, PNG or WebP photo." });
+    }
+
+    // 2) Send it to Cloudinary
     let uploaded;
     try {
-      uploaded = await uploadMenuImage(req.file.buffer, req.auth.restaurantId);
+      uploaded = await uploadMenuImage(small, req.auth.restaurantId);
     } catch (e) {
-      console.error("🔴 MENU IMAGE UPLOAD:", e.message);
-      return res.status(400).json({ success: false, message: "This file is not a valid photo, or the upload failed. Please try another photo." });
+      const why = e?.message || e?.error?.message || String(e);
+      console.error("🔴 CLOUDINARY UPLOAD:", e?.http_code || "", why);
+      const keysWrong = /signature|api key|api_key|cloud_name|cloud name|401|403/i.test(`${why} ${e?.http_code || ""}`);
+      return res.status(502).json({
+        success: false,
+        message: keysWrong
+          ? "Photo storage (Cloudinary) rejected the upload. Please check the CLOUDINARY keys on the server."
+          : "Could not upload the photo to Cloudinary right now. Please try again.",
+      });
     }
 
     const oldPublicId = item.imagePublicId;

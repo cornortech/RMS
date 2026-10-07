@@ -9,11 +9,14 @@ const sharp = require("sharp");
 const isConfigured = () =>
   Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 
+// Removes spaces / quotes that sometimes get copied with the keys
+const clean = (v) => String(v || "").trim().replace(/^["']|["']$/g, "");
+
 if (isConfigured()) {
   cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: clean(process.env.CLOUDINARY_CLOUD_NAME),
+    api_key: clean(process.env.CLOUDINARY_API_KEY),
+    api_secret: clean(process.env.CLOUDINARY_API_SECRET),
     secure: true, // always https:// links
   });
 } else {
@@ -33,9 +36,8 @@ async function shrinkImage(buffer) {
     .toBuffer();
 }
 
-// 2. Send it to Cloudinary, inside this restaurant's own folder
-async function uploadMenuImage(buffer, restaurantId) {
-  const small = await shrinkImage(buffer);
+// 2. Send the (already shrunk) photo to Cloudinary, inside this restaurant's own folder
+async function uploadMenuImage(small, restaurantId) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
@@ -59,4 +61,4 @@ async function deleteImage(publicId) {
   }
 }
 
-module.exports = { isConfigured, uploadMenuImage, deleteImage };
+module.exports = { isConfigured, shrinkImage, uploadMenuImage, deleteImage };
