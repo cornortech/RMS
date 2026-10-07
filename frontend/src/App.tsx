@@ -1555,7 +1555,7 @@ const { lang, setLang } = useLang();
                     Refunded on: {new Date(invoiceToView.refundedAt || '').toLocaleString()}
                   </p>
                 </div>
-              )}
+              )} 
 
               <div className="pt-6 border-t border-dashed border-slate-300 text-[9px] space-y-2 text-center">
                 <div className="italic text-slate-500">Thank you, visit again!</div>
