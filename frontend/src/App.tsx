@@ -1556,7 +1556,7 @@ const { lang, setLang } = useLang();
                   </p>
                 </div>
               )} 
-
+ 
               <div className="pt-6 border-t border-dashed border-slate-300 text-[9px] space-y-2 text-center">
                 <div className="italic text-slate-500">Thank you, visit again!</div>
                 <div className="font-semibold text-slate-500">Powered By: Atithi RMS by Cornor Tech Pvt. Ltd.</div>
