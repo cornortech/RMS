@@ -367,7 +367,7 @@ router.put("/settings", only(...MANAGER), async (req, res) => {
 // ---------------------------------------------------------------------
 router.get("/menu-extras", async (req, res) => {
   try {
-    const menu = await Menu.find({ restaurantId: rid(req) }).select("itemName category price status").sort({ category: 1, itemName: 1 }).lean();
+    const menu = await Menu.find({ restaurantId: rid(req) }).select("itemName category price status imageUrl").sort({ category: 1, itemName: 1 }).lean();
     const extras = await DeliveryMenuExtra.find({ restaurantId: rid(req) }).lean();
     const byId = new Map(extras.map((e) => [String(e.menuItemId), e]));
     res.json({
@@ -378,7 +378,7 @@ router.get("/menu-extras", async (req, res) => {
         category: m.category,
         price: m.price,
         status: m.status,
-        imageUrl: byId.get(String(m._id))?.imageUrl || "",
+        imageUrl: m.imageUrl || "", // 📷 photo comes from the Menu page only
         addons: byId.get(String(m._id))?.addons || [],
         deliveryEnabled: byId.get(String(m._id))?.deliveryEnabled !== false,
       })),
@@ -396,9 +396,6 @@ router.put("/menu-extras/:menuItemId", only(...MANAGER), async (req, res) => {
     const owns = await Menu.exists({ _id: id, restaurantId: rid(req) });
     if (!owns) return bad(res, "Menu item not found.", 404);
 
-    const imageUrl = core.cleanText(req.body?.imageUrl, 500);
-    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return bad(res, "Image link must start with http:// or https://");
-
     const addons = (Array.isArray(req.body?.addons) ? req.body.addons : [])
       .slice(0, 30)
       .map((a) => ({ name: core.cleanText(a?.name, 60), price: Math.min(Math.max(core.cleanNum(a?.price, 0), 0), 100000), isAvailable: a?.isAvailable !== false }))
@@ -406,7 +403,7 @@ router.put("/menu-extras/:menuItemId", only(...MANAGER), async (req, res) => {
 
     const doc = await DeliveryMenuExtra.findOneAndUpdate(
       { restaurantId: rid(req), menuItemId: id },
-      { $set: { imageUrl, addons, deliveryEnabled: req.body?.deliveryEnabled !== false } },
+      { $set: { addons, deliveryEnabled: req.body?.deliveryEnabled !== false } }, // photo is set in the Menu page, not here
       { upsert: true, new: true, setDefaultsOnInsert: true }
     ).lean();
     res.json({ success: true, data: doc });

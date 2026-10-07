@@ -4,6 +4,7 @@ import {
   Store, ChefHat, ExternalLink, Download, CircleDollarSign, X,
 } from 'lucide-react';
 import { api, copyText, money, type DSettings, type DArea } from '../../delivery/shared';
+import MenuImage from '../MenuImage';
 
 const BLANK: DSettings = {
   acceptingOrders: true, acceptCOD: true, acceptOnline: true, sendToKitchen: true, onlinePaymentNote: '',
@@ -191,7 +192,7 @@ function MenuExtras({ canEdit }: { canEdit: boolean }) {
     if (!edit) return;
     setSaving(true); setErr('');
     try {
-      await api(`/api/delivery/menu-extras/${edit._id}`, { method: 'PUT', body: JSON.stringify({ imageUrl: edit.imageUrl, addons: edit.addons, deliveryEnabled: edit.deliveryEnabled }) });
+      await api(`/api/delivery/menu-extras/${edit._id}`, { method: 'PUT', body: JSON.stringify({ addons: edit.addons, deliveryEnabled: edit.deliveryEnabled }) });
       setEdit(null); load();
     } catch (e: any) { setErr(e.message); } finally { setSaving(false); }
   };
@@ -201,14 +202,14 @@ function MenuExtras({ canEdit }: { canEdit: boolean }) {
   return (
     <section className="rounded-3xl bg-white p-5 ring-1 ring-purple-100">
       <h3 className="font-display text-lg font-bold text-slate-900">Online menu</h3>
-      <p className="mb-4 text-sm text-slate-500">Your items come from the Menu page. Here you add a <b>photo link</b>, <b>add-ons</b> (extra cheese, spicy…) and choose what shows on the website.</p>
+      <p className="mb-4 text-sm text-slate-500">Your items come from the Menu page. Photos also come from the Menu page. Here you add <b>add-ons</b> (extra cheese, spicy…) and choose what shows on the website.</p>
       {err && !edit && <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
       {items.length === 0 ? <p className="py-10 text-center text-sm text-slate-500">Your menu is empty. Add dishes in the Menu page first.</p> : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((m) => (
             <button key={m._id} onClick={() => canEdit && setEdit({ ...m, addons: m.addons.map((a) => ({ ...a })) })} className="flex items-center gap-3 rounded-2xl p-3 text-left ring-1 ring-slate-100 transition hover:ring-purple-300 hover:bg-purple-50/40">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-purple-100 to-amber-100">
-                {m.imageUrl ? <img src={m.imageUrl} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} /> : <div className="flex h-full items-center justify-center text-2xl">🍽️</div>}
+                <MenuImage src={m.imageUrl} alt={m.itemName} fallback={<div className="flex h-full items-center justify-center text-2xl">🍽️</div>} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold text-slate-900">{m.itemName}</p>
@@ -231,9 +232,12 @@ function MenuExtras({ canEdit }: { canEdit: boolean }) {
               <div><h3 className="font-display text-xl font-bold">{edit.itemName}</h3><p className="text-sm text-slate-500">{edit.category} · {money(edit.price)}</p></div>
               <button onClick={() => setEdit(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
-            <label className="mt-4 block"><span className="mb-1 block text-xs font-bold text-slate-600">Photo link (https://…)</span>
-              <input className="inp" value={edit.imageUrl} onChange={(e) => setEdit({ ...edit, imageUrl: e.target.value })} placeholder="https://example.com/momo.jpg" /></label>
-            {edit.imageUrl && <img src={edit.imageUrl} alt="" className="mt-2 h-32 w-full rounded-xl object-cover" onError={(e) => ((e.target as HTMLImageElement).style.opacity = '0.2')} />}
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-purple-100 to-amber-100">
+                <MenuImage src={edit.imageUrl} alt={edit.itemName} fallback={<div className="flex h-full items-center justify-center text-2xl">🍽️</div>} />
+              </div>
+              <p className="text-xs text-slate-500">📷 The photo comes from the <b>Menu</b> page. To add or change it, open <b>Menu → Edit</b> this item.</p>
+            </div>
 
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between"><span className="text-xs font-bold text-slate-600">Add-ons</span>

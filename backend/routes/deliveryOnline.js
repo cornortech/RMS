@@ -224,7 +224,7 @@ router.get("/:restaurantKey/menu", async (req, res) => {
           available: m.status === "Available",
           isCombo: m.isCombo,
           comboItems: (m.comboItems || []).map((c) => ({ itemName: c.itemName, quantity: c.quantity })),
-          imageUrl: safeUrl(x?.imageUrl) || safeUrl(m.imageUrl), // delivery photo first, else the menu photo
+          imageUrl: safeUrl(m.imageUrl), // 📷 photo from the Menu page
           addons: (x?.addons || []).filter((a) => a.isAvailable !== false).map((a) => ({ name: a.name, price: a.price })),
         };
       });
