@@ -6,7 +6,7 @@ import {
   Banknote, Smartphone, Wallet, CreditCard, Search, Sparkles,
   TrendingUp, Layers, ArrowUpDown, PartyPopper, QrCode, ArrowLeft,
   ChevronRight, Info, Plus, Minus, FileText,
-  Star, Gift, Crown, Award, UserPlus, Phone,
+Star, Gift, Crown, Award, UserPlus, Phone, Bike, MapPin,
 } from 'lucide-react';
 import BillQR, { WalletId } from './BillQR';
 import { printReceipt } from '../utils/printReceipt';
@@ -57,6 +57,8 @@ interface Bill {
   panOrVat?: string;
   invoiceNo: string;
   billTo: string;
+  customerPhone?: string;
+  customerAddress?: string;
   tableNumber?: string;
   paymentMethod: string;
   date: string;
@@ -327,6 +329,8 @@ interface BillSummary {
 interface GroupedPending extends BillSummary {
   key: string;
   billTo: string;
+    phone?: string;
+  address?: string;
   tableNumbers: string[];
   earliestDate: string;
   restaurantId: string;
@@ -363,10 +367,11 @@ function summarizeBills(bills: Bill[]): BillSummary {
   };
 }
 
-function groupPendingBills(bills: Bill[]): GroupedPending[] {
+// perBill = true (Delivery Bills): every bill is its own card, because each delivery is separate
+function groupPendingBills(bills: Bill[], perBill = false): GroupedPending[] {
   const groups = new Map<string, Bill[]>();
   for (const bill of bills) {
-    const key = normalizeName(bill.billTo);
+    const key = perBill ? bill._id : normalizeName(bill.billTo);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(bill);
   }
@@ -377,11 +382,15 @@ function groupPendingBills(bills: Bill[]): GroupedPending[] {
       (a, b) => new Date(a.date || a.createdAt || 0).getTime() - new Date(b.date || b.createdAt || 0).getTime()
     );
     const summary = summarizeBills(sortedByDate);
+    const withPhone = groupBills.find((b) => b.customerPhone);
+    const withAddress = groupBills.find((b) => b.customerAddress);
     result.push({
-      key: normalizeName(groupBills[0].billTo),
+      key: perBill ? groupBills[0]._id : normalizeName(groupBills[0].billTo),
       billTo: groupBills[0].billTo,
+      phone: withPhone?.customerPhone || '',
+      address: withAddress?.customerAddress || '',
       ...summary,
-      tableNumbers: Array.from(new Set(groupBills.map((b) => b.tableNumber).filter(Boolean) as string[])),
+      tableNumbers: Array.from(new Set(groupBills.map((b) => b.tableNumber).filter((t) => t && t !== 'No Table') as string[])),
       earliestDate: sortedByDate[0]?.date || sortedByDate[0]?.createdAt || new Date().toISOString(),
       restaurantId: groupBills[0].restaurantId,
       restaurantName: groupBills[0].restaurantName,
@@ -478,7 +487,14 @@ function PendingCustomersTable({
                     >
                       {initials(group.billTo)}
                     </span>
-                    <span className="font-semibold text-slate-900">{group.billTo}</span>
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-slate-900">{group.billTo}</span>
+                      {(group.phone || group.address) && (
+                        <span className="block truncate text-[11px] text-slate-500">
+                          {[group.phone, group.address].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </td>
                 <td className="px-3 py-3.5 font-mono text-xs text-slate-500">
@@ -558,6 +574,11 @@ function PendingGroupCard({
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-bold leading-tight text-slate-900">{group.billTo}</p>
+                        {(group.phone || group.address) && (
+              <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
+                {[group.phone && `📞 ${group.phone}`, group.address && `📍 ${group.address}`].filter(Boolean).join('  ')}
+              </p>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <span
                 className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
@@ -1625,6 +1646,7 @@ function MergedBillModal({
   paidPaymentMethod,
   paidBreakdown,
   loyalty,
+  deliveryMode = false,
 }: {
   group: GroupedPending;
   lang: Lang;
@@ -1632,8 +1654,13 @@ function MergedBillModal({
   paidPaymentMethod?: string | null;
   paidBreakdown?: { label: string; amount: number }[];
   loyalty?: BillLoyalty | null;
+  deliveryMode?: boolean;
 }) {
-  const invoiceLabel = `PEND-${group.billIds.map((id) => id.slice(-4)).join('-')}`;
+  // A single delivery bill keeps its real invoice number
+  const invoiceLabel =
+    deliveryMode && group.bills.length === 1
+      ? group.bills[0].invoiceNo
+      : `PEND-${group.billIds.map((id) => id.slice(-4)).join('-')}`;
   const isPaidReceipt = !!paidPaymentMethod;
 
   const loggedInUser = getLoggedInUser();
@@ -1660,6 +1687,8 @@ function MergedBillModal({
               {isPaidReceipt ? <PartyPopper className="h-5 w-5" /> : <Receipt className="h-5 w-5" />}
               {isPaidReceipt
                 ? lang === 'en' ? 'Payment successful' : 'भुक्तानी सफल'
+                : deliveryMode
+                ? lang === 'en' ? 'Delivery bill' : 'डेलिभरी बिल'
                 : lang === 'en' ? 'Combined pending bill' : 'संयुक्त बाँकी बिल'}
             </span>
             <button
@@ -1719,6 +1748,8 @@ function MergedBillModal({
                 <h4 className="mt-1.5 border-y border-slate-200 py-1 text-[11px] font-extrabold uppercase tracking-wider text-slate-950">
                   {isPaidReceipt
                     ? lang === 'en' ? 'PAYMENT RECEIPT' : 'भुक्तानी रसिद'
+                    : deliveryMode
+                    ? lang === 'en' ? 'DELIVERY BILL - TO COLLECT' : 'डेलिभरी बिल - रकम लिन बाँकी'
                     : lang === 'en' ? 'COMBINED INVOICE' : 'संयुक्त बिजक'}
                 </h4>
               </div>
@@ -1737,6 +1768,16 @@ function MergedBillModal({
                     <span className="ml-1 font-mono text-[10px] text-slate-500">(Tables {group.tableNumbers.join(', ')})</span>
                   )}
                 </div>
+                                {group.phone && (
+                  <div>
+                    Phone: <span className="font-mono font-bold text-slate-900">{group.phone}</span>
+                  </div>
+                )}
+                {group.address && (
+                  <div>
+                    Address: <span className="font-bold text-slate-900">{group.address}</span>
+                  </div>
+                )}
                 <div>
                   {lang === 'en' ? 'Merged from' : 'बाट मर्ज गरिएको'}:{' '}
                   <span className="font-semibold text-slate-950">
@@ -1865,7 +1906,10 @@ function MergedBillModal({
 // MAIN UNPAID BILL PAGE
 // ==========================================
 
-export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
+// mode="Pending"  → Pending Bills page (bills saved as "Pay later")
+// mode="Delivery" → Delivery Bills page (bills saved as "Delivery", money collected by the rider)
+export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { lang?: Lang; mode?: 'Pending' | 'Delivery' }) {
+  const isDeliveryMode = mode === 'Delivery';
   const user = getLoggedInUser();
   const restaurantId = user?.id ? String(user.id) : '';
   const loyaltyRestaurantId = user?.id || user?.username ? String(user?.id || user?.username) : '';
@@ -1925,8 +1969,8 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     fetchBills();
   }, [fetchBills]);
 
-  const pendingBills = useMemo(() => allBills.filter((b) => b.paymentMethod === 'Pending'), [allBills]);
-  const groupedPending = useMemo(() => groupPendingBills(pendingBills), [pendingBills]);
+  const pendingBills = useMemo(() => allBills.filter((b) => b.paymentMethod === mode), [allBills, mode]);
+  const groupedPending = useMemo(() => groupPendingBills(pendingBills, isDeliveryMode), [pendingBills, isDeliveryMode]);
 
   const visibleGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2369,15 +2413,19 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       {/* ================= HEADER ================= */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex items-center gap-3.5">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/30">
-            <Clock className="h-6 w-6" aria-hidden="true" />
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg ${isDeliveryMode ? 'from-sky-400 to-indigo-500 shadow-sky-500/30' : 'from-amber-400 to-orange-500 shadow-amber-500/30'}`}>
+            {isDeliveryMode ? <Bike className="h-6 w-6" aria-hidden="true" /> : <Clock className="h-6 w-6" aria-hidden="true" />}
           </div>
           <div>
             <h2 className="text-2xl font-black tracking-tight text-slate-900">
-              {lang === 'en' ? 'Pending Bills' : 'बाँकी बिलहरू'}
+              {isDeliveryMode ? (lang === 'en' ? 'Delivery Bills' : 'डेलिभरी बिलहरू') : lang === 'en' ? 'Pending Bills' : 'बाँकी बिलहरू'}
             </h2>
             <p className="text-sm text-slate-500">
-              {lang === 'en'
+              {isDeliveryMode
+                ? lang === 'en'
+                  ? 'Bills sent with the rider. When the money comes back, open the bill and mark it paid.'
+                  : 'राइडरसँग पठाइएका बिल। पैसा आएपछि बिल खोलेर भुक्तानी गर्नुहोस्।'
+                : lang === 'en'
                 ? 'Bills under the same name are combined, so each customer pays once.'
                 : 'उही नामका बिलहरू एउटै बिजकमा मिसिन्छन्।'}
             </p>
@@ -2424,7 +2472,9 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
           <div className="mr-auto flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-purple-500" aria-hidden="true" />
             <h3 id="pending-customers-title" className="text-sm font-bold text-slate-900">
-              {lang === 'en' ? 'Customers with pending bills' : 'बाँकी ग्राहकहरू'}
+{isDeliveryMode
+                ? lang === 'en' ? 'Deliveries waiting for payment' : 'भुक्तानी बाँकी डेलिभरी'
+                : lang === 'en' ? 'Customers with pending bills' : 'बाँकी ग्राहकहरू'}
             </h3>
             <span className="rounded-full bg-purple-50 px-2 py-0.5 font-mono text-[11px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
               {visibleGroups.length}
@@ -2474,7 +2524,9 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
             </div>
             <p className="text-base font-bold text-emerald-800">{lang === 'en' ? 'All caught up' : 'सबै भुक्तानी भइसक्यो!'}</p>
             <p className="mt-1 text-sm text-emerald-700/70">
-              {lang === 'en' ? 'Bills saved as "Pay later" will appear here.' : 'अहिले कुनै बाँकी बिल छैन'}
+{isDeliveryMode
+                ? lang === 'en' ? 'Bills saved as "Delivery" will appear here.' : 'अहिले कुनै डेलिभरी बिल छैन'
+                : lang === 'en' ? 'Bills saved as "Pay later" will appear here.' : 'अहिले कुनै बाँकी बिल छैन'}
             </p>
           </div>
         ) : visibleGroups.length === 0 ? (
@@ -2535,11 +2587,25 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">
-                  {lang === 'en' ? 'Settle pending bills' : 'बाँकी बिल मिलान'}
+{isDeliveryMode
+                    ? lang === 'en' ? 'Collect delivery payment' : 'डेलिभरी भुक्तानी लिनुहोस्'
+                    : lang === 'en' ? 'Settle pending bills' : 'बाँकी बिल मिलान'}
                 </p>
                 <h2 id="settle-window-title" className="truncate text-lg font-black tracking-tight text-slate-900 sm:text-xl">
                   {selectedGroup.billTo}
                 </h2>
+                                {(selectedGroup.phone || selectedGroup.address) && (
+                  <p className="flex flex-wrap items-center gap-x-3 text-xs font-semibold text-slate-500">
+                    {selectedGroup.phone && (
+                      <a href={`tel:${selectedGroup.phone}`} className="inline-flex items-center gap-1 hover:text-purple-700">
+                        <Phone className="h-3 w-3" /> {selectedGroup.phone}
+                      </a>
+                    )}
+                    {selectedGroup.address && (
+                      <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {selectedGroup.address}</span>
+                    )}
+                  </p>
+                )}
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   {selectedGroup.tableNumbers.length > 0 && (
                     <span className="inline-flex items-center gap-0.5 rounded-md bg-purple-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-purple-700">
@@ -2688,7 +2754,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                             <p className="truncate font-mono text-xs font-bold text-slate-800">{b.invoiceNo}</p>
                             <p className="truncate text-[11px] text-slate-500">
                               {when ? new Date(when).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                              {b.tableNumber ? ` · ${lang === 'en' ? 'Table' : 'टेबल'} ${b.tableNumber}` : ''}
+                              {b.tableNumber && b.tableNumber !== 'No Table' ? ` · ${lang === 'en' ? 'Table' : 'टेबल'} ${b.tableNumber}` : ''}
                               {` · ${qty} ${lang === 'en' ? 'items' : 'परिकार'}`}
                             </p>
                           </div>
@@ -2913,6 +2979,7 @@ export default function UnpaidBill({ lang = 'en' as Lang }: { lang?: Lang }) {
           paidPaymentMethod={receiptPaymentMethod}
           paidBreakdown={receiptBreakdown}
           loyalty={receiptLoyalty}
+          deliveryMode={isDeliveryMode}
         />
       )}
     </div>

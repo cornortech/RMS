@@ -68,6 +68,8 @@ interface Order {
   restaurantId?: string;
   staffId?: string;
   customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
@@ -176,6 +178,13 @@ const CATEGORY_META: Record<string, { emoji: string; tile: string; chip: string 
   Other: { emoji: '🍽️', tile: 'bg-slate-100 ring-slate-200', chip: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
 const getCat = (c: string) => CATEGORY_META[c] || CATEGORY_META.Other;
+
+
+// "No Table" = order taken with customer details (no table). Hide it everywhere.
+const isRealTable = (t?: string) => {
+  const v = String(t || '').trim().toLowerCase();
+  return !!v && v !== 'no table' && v !== 'n/a';
+};
 
 const CARD =
   'rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04)]';
@@ -992,13 +1001,20 @@ export default function OrdersPage() {
                   {/* Header */}
                   <div className="flex items-start gap-3">
                     <div className="flex h-12 min-w-[48px] shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 px-2 ring-1 ring-inset ring-purple-100">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400">Table</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400">
+                        {isRealTable(order.tableNumber) ? 'Table' : 'Customer'}
+                      </span>
                       <span className="max-w-[64px] truncate text-sm font-black leading-tight text-purple-700">
-                        {order.tableNumber}
+                        {isRealTable(order.tableNumber) ? order.tableNumber : '👤'}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base font-bold text-slate-900">{order.customerName}</p>
+                                            {(order.customerPhone || order.customerAddress) && (
+                        <p className="truncate text-[11px] font-medium text-slate-500">
+                          {[order.customerPhone && `📞 ${order.customerPhone}`, order.customerAddress && `📍 ${order.customerAddress}`].filter(Boolean).join('  ')}
+                        </p>
+                      )}
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
                         <span className="font-mono font-semibold">#{ticketNumber(order)}</span>
                         {mins !== null && (
@@ -1165,7 +1181,7 @@ export default function OrdersPage() {
                   <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
                     <span className="font-mono font-semibold">#{ticketNumber(editingOrder)}</span>
                     <span aria-hidden="true">·</span>
-                    <span>Table {editingOrder.tableNumber}</span>
+                    <span>{isRealTable(editingOrder.tableNumber) ? `Table ${editingOrder.tableNumber}` : 'Customer order'}</span>
                   </p>
                 </div>
               </div>
@@ -1228,10 +1244,12 @@ export default function OrdersPage() {
                       <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-100">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Customer</p>
                         <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{editingOrder.customerName}</p>
+                        {editingOrder.customerPhone && <p className="truncate text-[11px] text-slate-500">📞 {editingOrder.customerPhone}</p>}
+                        {editingOrder.customerAddress && <p className="truncate text-[11px] text-slate-500">📍 {editingOrder.customerAddress}</p>}
                       </div>
                       <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-100">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Table</p>
-                        <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{editingOrder.tableNumber}</p>
+                        <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{isRealTable(editingOrder.tableNumber) ? editingOrder.tableNumber : '—'}</p>
                       </div>
                     </div>
 
@@ -1728,7 +1746,7 @@ export default function OrdersPage() {
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-[10px] font-semibold text-slate-400">Table</p>
-                  <p className="mt-0.5 truncate font-bold text-slate-900">{editingOrder.tableNumber}</p>
+                  <p className="mt-0.5 truncate font-bold text-slate-900">{isRealTable(editingOrder.tableNumber) ? editingOrder.tableNumber : '—'}</p>
                 </div>
               </div>
 

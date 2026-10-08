@@ -58,6 +58,8 @@ app.use(express.json({ limit: "100kb" }));
 // ---------- Helpers ----------
 const getValue = (val, fallback) => (val !== undefined && val !== null && String(val).trim() !== "") ? val : fallback;
 
+const COMBO_CATEGORY = "Combo"; // menu items in this category are combos
+
 const parseNum = (val, fallback = 0) => {
     const parsed = Number(val);
     return isNaN(parsed) ? fallback : parsed;
@@ -74,93 +76,90 @@ const str = (v) => (typeof v === "string" ? v.trim() : "");
 
 
 // ==========================
-// CRUD OPERATIONS FOR CUSTOMER NAME
+// SAVED CUSTOMERS (name + phone + address) — all optional except name
+// 🔒 Login required. The restaurant ALWAYS comes from the login token,
+//    so one restaurant can never see or change another's customers.
 // ==========================
+const cleanText = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const cleanPhone = (v) => (typeof v === "string" ? v.replace(/[^0-9+\-\s]/g, "").trim().slice(0, 20) : "");
+const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// 1. CREATE: Add a new customer for a specific restaurant
-app.post("/api/customers", async (req, res) => {
+// 1. SAVE: new customer, or update phone/address if the same name already exists
+app.post("/api/customers", requireAuth, async (req, res) => {
     try {
-        const { restaurantId, customerName } = req.body;
+        const restaurantId = req.auth.restaurantId;
+        const customerName = cleanText(req.body?.customerName, 80);
+        const customerPhone = cleanPhone(req.body?.customerPhone);
+        const customerAddress = cleanText(req.body?.customerAddress, 200);
+        if (!customerName) return res.status(400).json({ success: false, message: "Customer name is required." });
 
-        if (!restaurantId || !customerName) {
-            return res.status(400).json({ error: "restaurantId and customerName are required." });
-        }
+        const update = {};
+        if (customerPhone) update.customerPhone = customerPhone;
+        if (customerAddress) update.customerAddress = customerAddress;
 
-        const newCustomer = new Customer({ restaurantId, customerName });
-        const savedCustomer = await newCustomer.save();
-
-        res.status(201).json({
-            message: "Customer saved successfully",
-            data: savedCustomer,
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 2. READ: Get all customers for a specific restaurant (Uses your compound index)
-app.get("/api/customers/:restaurantId", async (req, res) => {
-    try {
-        const { restaurantId } = req.params;
-
-        // Automatically sorted by newest first because of your index
-        const customers = await Customer.find({ restaurantId });
-
-        res.status(200).json({
-            count: customers.length,
-            data: customers,
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 3. UPDATE: Update a customer's name by their ID
-app.put("/api/customers/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { customerName } = req.body;
-
-        if (!customerName) {
-            return res.status(400).json({ error: "customerName is required for update." });
-        }
-
-        const updatedCustomer = await Customer.findByIdAndUpdate(
-            id,
-            { customerName },
-            { new: true, runValidators: true } // Returns the updated document
+        const saved = await Customer.findOneAndUpdate(
+            { restaurantId, customerName: mongoose.trusted({ $regex: `^${escapeRx(customerName)}$`, $options: "i" }) },
+            { $set: update, $setOnInsert: { restaurantId, customerName } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
         );
-
-        if (!updatedCustomer) {
-            return res.status(404).json({ error: "Customer not found." });
-        }
-
-        res.status(200).json({
-            message: "Customer updated successfully",
-            data: updatedCustomer,
-        });
+        return res.status(201).json({ success: true, message: "Customer saved", data: saved });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("🔴 CUSTOMER SAVE:", error);
+        return res.status(500).json({ success: false, message: "Could not save customer." });
     }
 });
 
-// 4. DELETE: Delete a customer by their ID
-app.delete("/api/customers/:id", async (req, res) => {
+// 2. LIST: this restaurant's customers (newest first). The :restaurantId in the link is ignored.
+app.get("/api/customers/:restaurantId", requireAuth, async (req, res) => {
     try {
-        const { id } = req.params;
-
-        const deletedCustomer = await Customer.findByIdAndDelete(id);
-
-        if (!deletedCustomer) {
-            return res.status(404).json({ error: "Customer not found." });
-        }
-
-        res.status(200).json({
-            message: "Customer deleted successfully",
-            data: deletedCustomer,
-        });
+        const customers = await Customer.find({ restaurantId: req.auth.restaurantId })
+            .select("restaurantId customerName customerPhone customerAddress createdAt")
+            .sort({ updatedAt: -1 })
+            .limit(2000)
+            .lean();
+        return res.status(200).json({ success: true, count: customers.length, data: customers });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("🔴 CUSTOMER LIST:", error);
+        return res.status(500).json({ success: false, message: "Could not load customers." });
+    }
+});
+
+// 3. UPDATE: change name / phone / address (only this restaurant's customer)
+app.put("/api/customers/:id", requireAuth, async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid id." });
+        const update = {};
+        if (req.body?.customerName !== undefined) {
+            const n = cleanText(req.body.customerName, 80);
+            if (!n) return res.status(400).json({ success: false, message: "Customer name cannot be empty." });
+            update.customerName = n;
+        }
+        if (req.body?.customerPhone !== undefined) update.customerPhone = cleanPhone(req.body.customerPhone);
+        if (req.body?.customerAddress !== undefined) update.customerAddress = cleanText(req.body.customerAddress, 200);
+
+        const updated = await Customer.findOneAndUpdate(
+            { _id: req.params.id, restaurantId: req.auth.restaurantId },
+            { $set: update },
+            { new: true, runValidators: true }
+        );
+        if (!updated) return res.status(404).json({ success: false, message: "Customer not found." });
+        return res.status(200).json({ success: true, message: "Customer updated", data: updated });
+    } catch (error) {
+        console.error("🔴 CUSTOMER UPDATE:", error);
+        return res.status(500).json({ success: false, message: "Could not update customer." });
+    }
+});
+
+// 4. DELETE (only this restaurant's customer)
+app.delete("/api/customers/:id", requireAuth, async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid id." });
+        const deleted = await Customer.findOneAndDelete({ _id: req.params.id, restaurantId: req.auth.restaurantId });
+        if (!deleted) return res.status(404).json({ success: false, message: "Customer not found." });
+        return res.status(200).json({ success: true, message: "Customer deleted" });
+    } catch (error) {
+        console.error("🔴 CUSTOMER DELETE:", error);
+        return res.status(500).json({ success: false, message: "Could not delete customer." });
     }
 });
 
@@ -668,6 +667,8 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             restaurantId: restaurantId,
             staffId: staffId,   // the staff "id" like "111"
             customerName: getValue(formData.customerName, "Guest"),
+            customerPhone: cleanPhone(formData.customerPhone),
+            customerAddress: cleanText(formData.customerAddress, 200),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             orderNote: getValue(formData.orderNote, ""),
             items: (formData.items || []).map(i => ({
@@ -710,6 +711,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
             restaurantId: item.restaurantId,
             staffId: item.staffId || null, // <--- Mapping staffId to the response
             customerName: item.customerName,
+            customerPhone: item.customerPhone || "",
+            customerAddress: item.customerAddress || "",
             tableNumber: item.tableNumber,
             orderNote: item.orderNote,
             items: item.items,
@@ -751,6 +754,8 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
         const updateData = req.body;
 
         const updatedFields = {};
+                if (updateData.customerPhone !== undefined) updatedFields.customerPhone = cleanPhone(updateData.customerPhone);
+        if (updateData.customerAddress !== undefined) updatedFields.customerAddress = cleanText(updateData.customerAddress, 200);
         if (updateData.customerName !== undefined) updatedFields.customerName = updateData.customerName;
         if (updateData.tableNumber !== undefined) updatedFields.tableNumber = updateData.tableNumber;
         if (updateData.orderNote !== undefined) updatedFields.orderNote = updateData.orderNote;
@@ -988,6 +993,8 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             dateBS: toBS(billDate),
             clientRef: typeof formData.invoiceNo === "string" ? formData.invoiceNo.slice(0, 40) : "",
             billTo: getValue(formData.billTo, "Anonymous Customer"),
+            customerPhone: cleanPhone(formData.customerPhone),
+            customerAddress: cleanText(formData.customerAddress, 200),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             paymentMethod: getValue(formData.paymentMethod, "Cash"),
             cashPaidMoney: parseNum(getValue(formData.cashPaidMoney, 0)),
@@ -1057,6 +1064,8 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             cancelledAt: bill.cancelledAt,
             cancelledDateBS: bill.cancelledDateBS,
             billTo: bill.billTo,
+            customerPhone: bill.customerPhone || "",
+            customerAddress: bill.customerAddress || "",
             tableNumber: bill.tableNumber,
             paymentMethod: bill.paymentMethod,
             cashPaidMoney: bill.cashPaidMoney,

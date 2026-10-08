@@ -32,6 +32,8 @@ const createOrderSchema = mongoose.Schema({
     customerName: {
         type: String,
     },
+        customerPhone: { type: String, default: "" },
+    customerAddress: { type: String, default: "" },
     tableNumber: {
         type: String,
     },

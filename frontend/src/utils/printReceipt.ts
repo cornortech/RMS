@@ -37,17 +37,23 @@ export function printHtml(bodyHtml: string, options: { copyAppStyles?: boolean; 
   }
 
   // Copy the app's CSS so the receipt looks the same as on screen.
+  // ✅ FIX "first print is messy": the CSS is copied as TEXT (already loaded in the app),
+  // so the print frame does not have to download it again.
   // The receipt's own "@media print" rules are switched on here, so we measure it as it will print.
   let appStyles = '';
   if (options.copyAppStyles) {
-    document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
-      if (node.tagName === 'LINK') {
-        appStyles += `<link rel="stylesheet" href="${(node as HTMLLinkElement).href}">`;
-      } else {
-        appStyles += `<style>${(node.textContent || '').replace(/@media\s+print/g, '@media all')}</style>`;
+    const fixPrint = (css: string) => css.replace(/@media\s+print/g, '@media all');
+    Array.from(document.styleSheets).forEach((sheet) => {
+      try {
+        const css = Array.from(sheet.cssRules).map((r) => r.cssText).join('\n');
+        appStyles += `<style>${fixPrint(css)}</style>`;
+      } catch {
+        // CSS from another website (e.g. Google Fonts) can't be read → link it, we wait for it below
+        if (sheet.href) appStyles += `<link rel="stylesheet" href="${sheet.href}">`;
       }
     });
   }
+
 
   doc.open();
   doc.write(`<!DOCTYPE html>
@@ -96,6 +102,17 @@ ${appStyles}
         window.setTimeout(resolve, 3000);
       });
     }
+        // Every linked stylesheet must be loaded (max 3 seconds each)
+    await Promise.all(
+      Array.from(doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).map((link) =>
+        link.sheet
+          ? null
+          : new Promise<void>((r) => {
+              link.onload = link.onerror = () => r();
+              window.setTimeout(r, 3000);
+            })
+      )
+    );
     if (doc.fonts?.ready) await doc.fonts.ready;
     await Promise.all(
       Array.from(doc.images).map((img) =>
@@ -113,6 +130,9 @@ ${appStyles}
       const page = doc.createElement('style');
       page.textContent = '@page { margin: 0; }';
       doc.head.appendChild(page);
+
+      // Let the browser finish the layout once before printing
+      await new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(() => r(null))));
 
       win.onafterprint = cleanup;
       win.focus();

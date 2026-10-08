@@ -1348,7 +1348,10 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   }, [restaurantId]);
 
   // A bill made from a delivery kitchen ticket is already counted as delivery money
-  const isDeliveryBill = (inv: InvoiceRecord) => inv.tableNumber.startsWith('Delivery DLV-');
+  // Left out of revenue: online-delivery kitchen tickets (counted as delivery money)
+  // and "Delivery" bills whose money the rider has not brought back yet
+  const isDeliveryBill = (inv: InvoiceRecord) =>
+    inv.tableNumber.startsWith('Delivery DLV-') || inv.paymentMethod === 'Delivery';
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -2516,7 +2519,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
                             </div>
                             <div className="space-y-0.5">
                               <span className="font-medium text-slate-900">{displayName}</span>
-                              {invoice.tableNumber && invoice.tableNumber !== 'N/A' && (
+                              {invoice.tableNumber && invoice.tableNumber !== 'N/A' && invoice.tableNumber !== 'No Table' && (
                                 <div>
                                   <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-sky-700">
                                     {T.table} {invoice.tableNumber}

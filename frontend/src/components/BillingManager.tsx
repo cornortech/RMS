@@ -269,7 +269,19 @@ function InvoiceModal({
                   <span>Bill To:</span>
                   <span>{bill.billTo}</span>
                 </div>
-                {bill.tableNumber && (
+                {(bill as any).customerPhone && (
+                  <div className="flex justify-between">
+                    <span>Phone:</span>
+                    <span>{(bill as any).customerPhone}</span>
+                  </div>
+                )}
+                {(bill as any).customerAddress && (
+                  <div className="flex justify-between gap-2">
+                    <span className="shrink-0">Address:</span>
+                    <span className="text-right">{(bill as any).customerAddress}</span>
+                  </div>
+                )}
+                {bill.tableNumber && !['no table', 'n/a'].includes(String(bill.tableNumber).trim().toLowerCase()) && (
                   <div className="flex justify-between">
                     <span>Table:</span>
                     <span>{bill.tableNumber}</span>
@@ -703,6 +715,7 @@ export default function BillingManager({
                             invoice.paymentMethod === 'Khalti' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                             invoice.paymentMethod === 'Fonepay' ? 'bg-rose-50 text-rose-700 border-rose-200' :
                             invoice.paymentMethod === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        invoice.paymentMethod === 'Delivery' ? 'bg-sky-50 text-sky-700 border-sky-200' :
                             'bg-indigo-50 text-indigo-700 border-indigo-200'
                           }`}>
                             {invoice.paymentMethod}

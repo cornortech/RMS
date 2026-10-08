@@ -9,9 +9,10 @@ const customerSchema = new mongoose.Schema(
         },
         customerName: {
             type: String,
-            required: true,
             trim: true,
         },
+                customerPhone: { type: String, default: "", trim: true },
+        customerAddress: { type: String, default: "", trim: true },
     },
     {
         timestamps: true,

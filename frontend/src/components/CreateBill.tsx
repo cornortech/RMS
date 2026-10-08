@@ -7,7 +7,7 @@ import {
   ClipboardList, ShoppingBag, PlusCircle, Percent, Clock, Search,
   Sparkles, TrendingUp, Layers, ArrowUpDown, PartyPopper, StickyNote,
   Timer, QrCode, ArrowLeft, ChevronRight, Info, Plus, Minus,
-  Star, Gift, Crown, Award, UserPlus, Phone, Users, User, UserPen,
+Star, Gift, Crown, Award, UserPlus, Phone, Users, User, UserPen, Bike, MapPin,
 } from 'lucide-react';
 import { printReceipt } from '../utils/printReceipt';
 
@@ -61,6 +61,8 @@ interface Order {
   _id: string;
   restaurantId: string;
   customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
@@ -1625,6 +1627,18 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
                     <span>Bill To:</span>
                     <span>{bill.billTo}</span>
                   </div>
+                                    {bill.customerPhone && (
+                    <div className="flex justify-between">
+                      <span>Phone:</span>
+                      <span className="font-mono">{bill.customerPhone}</span>
+                    </div>
+                  )}
+                  {bill.customerAddress && (
+                    <div className="flex justify-between gap-2">
+                      <span className="shrink-0">Address:</span>
+                      <span className="text-right">{bill.customerAddress}</span>
+                    </div>
+                  )}
                   {hasTable(bill.tableNumber) && (
                     <div className="flex justify-between">
                       <span>Table:</span>
@@ -1633,7 +1647,7 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
                   )}
                   <div className="flex justify-between">
                     <span>Payment:</span>
-                    <span>{bill.paymentMethod}</span>
+                    <span>{bill.paymentMethod === 'Delivery' ? 'Delivery - TO COLLECT' : bill.paymentMethod}</span>
                   </div>
                 </div>
 
@@ -1765,6 +1779,10 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
   const [selectedMethods, setSelectedMethods] = useState<Set<PaymentMethod>>(new Set());
   const [paymentSplit, setPaymentSplit] = useState<PaymentSplit>({});
+    // 🛵 Delivery: bill goes out with the rider, money is collected later (Delivery Bills page)
+  const [markAsDelivery, setMarkAsDelivery] = useState(false);
+  const [deliveryPhone, setDeliveryPhone] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [markAsPending, setMarkAsPending] = useState(false);
 
   // Discount can be entered as % OR flat Rs — the two inputs stay in sync.
@@ -1887,6 +1905,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setSelectedMethods(new Set());
     setPaymentSplit({});
     setMarkAsPending(false);
+    setMarkAsDelivery(false);
+    setDeliveryPhone(selectedOrder?.customerPhone || '');
+    setDeliveryAddress(selectedOrder?.customerAddress || '');
     setVatRate(DEFAULT_VAT_RATE);
     setQrMethod(null);
     setBillToName('');
@@ -2006,13 +2027,13 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const remainingBalance = Math.max(Number((grandTotal - totalPaid).toFixed(2)), 0);
   const overpaidBy = totalPaid > grandTotal ? Number((totalPaid - grandTotal).toFixed(2)) : 0;
   const isFullyPaid =
-    !markAsPending && remainingBalance <= 0.01 && (totalPaid > 0 || grandTotal <= 0.01);
+    !markAsPending && !markAsDelivery && remainingBalance <= 0.01 && (totalPaid > 0 || grandTotal <= 0.01);
 
   // Name is NOT required — the bill can always be created
   const canCreateBill =
     !!selectedOrder &&
     !submitting &&
-    (markAsPending || (selectedMethods.size > 0 && isFullyPaid));
+    (markAsPending || markAsDelivery || (selectedMethods.size > 0 && isFullyPaid));
 
   // ---------- Handlers ----------
   const handleSelectOrder = (o: Order) => {
@@ -2036,6 +2057,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
   const toggleMethod = (id: PaymentMethod) => {
     setMarkAsPending(false);
+        setMarkAsDelivery(false);
     const next = new Set(selectedMethods);
 
     if (selectedMethods.has(id)) {
@@ -2083,6 +2105,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     const next = !markAsPending;
     setMarkAsPending(next);
     if (next) {
+      setMarkAsDelivery(false);
       setSelectedMethods(new Set());
       setPaymentSplit({});
       setQrMethod(null);
@@ -2094,6 +2117,22 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       fetchPendingCustomers();
     } else {
       setPendingName('');
+    }
+  };
+
+    // 🛵 Delivery: like "Pay later", but the bill is printed and goes with the rider
+  const toggleDelivery = () => {
+    const next = !markAsDelivery;
+    setMarkAsDelivery(next);
+    if (next) {
+      setMarkAsPending(false);
+      setPendingName('');
+      setSelectedMethods(new Set());
+      setPaymentSplit({});
+      setQrMethod(null);
+      setLoyaltyOpen(false);
+      setLoyaltyMember(null);
+      setLoyaltyPoints(0);
     }
   };
 
@@ -2118,6 +2157,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setSelectedMethods(new Set());
     setPaymentSplit({});
     setMarkAsPending(false);
+    setMarkAsDelivery(false);
+    setDeliveryPhone('');
+    setDeliveryAddress('');
     setDiscountPercent(0);
     setDiscountAmountInput(0);
     setDiscountMode('percent');
@@ -2150,13 +2192,16 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setError('');
 
     const isPending = markAsPending;
+        const isDelivery = markAsDelivery;
     const billTo = finalBillTo;
     const nameWasTyped = needsName && !!typedName;
     const member = loyaltyMember;
     // Points only when money is actually collected
-    const pointsToAdd = member && !isPending ? Math.max(Math.floor(loyaltyPoints), 0) : 0;
+    const pointsToAdd = member && !isPending && !isDelivery ? Math.max(Math.floor(loyaltyPoints), 0) : 0;
 
-    const methodLabel = isPending
+    const methodLabel = isDelivery
+      ? 'Delivery'
+      : isPending
       ? 'Pending'
       : selectedMethods.size > 1
       ? 'Split'
@@ -2168,6 +2213,8 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       panOrVat: restaurantPanOrVat,
       invoiceNo: `INV-${Date.now()}`,
       billTo,
+      customerPhone: (isDelivery ? deliveryPhone : selectedOrder.customerPhone || '').trim(),
+      customerAddress: (isDelivery ? deliveryAddress : selectedOrder.customerAddress || '').trim(),
       tableNumber: selectedOrder.tableNumber || NO_TABLE_LABEL,
       paymentMethod: methodLabel,
       cashPaidMoney: paymentSplit.Cash ?? 0,
@@ -2206,7 +2253,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paymentStatus: isPending ? 'Pending' : 'Paid',
+          paymentStatus: isPending || isDelivery ? 'Pending' : 'Paid',
           orderStatus: 'Completed',
           // Save the typed name on the order too (ignored if your API does not allow it)
           ...(nameWasTyped ? { customerName: typedName } : {}),
@@ -2337,7 +2384,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         </div>
       )}
 
-      {loyaltyMember && loyaltyPoints > 0 && !markAsPending && (
+     {loyaltyMember && loyaltyPoints > 0 && !markAsPending && !markAsDelivery && (
         <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 px-3 py-2 text-xs font-bold text-amber-700 ring-1 ring-inset ring-amber-100">
           <span className="flex min-w-0 items-center gap-1.5">
             <Star className="h-3.5 w-3.5 shrink-0" fill="currentColor" />
@@ -2369,6 +2416,15 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         />
       )}
 
+      {markAsDelivery && (
+        <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">
+          <Bike className="h-3.5 w-3.5 shrink-0" />
+          {lang === 'en'
+            ? `NPR ${money(grandTotal)} will be collected on delivery. You can print the bill for the rider.`
+            : `NPR ${money(grandTotal)} डेलिभरीमा लिइनेछ। राइडरका लागि बिल प्रिन्ट गर्न सकिन्छ।`}
+        </div>
+      )}
+
       {markAsPending && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
           <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -2384,7 +2440,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         disabled={!canCreateBill}
         aria-busy={submitting}
         className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold text-white transition-all active:scale-[.99] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none ${FOCUS} ${
-          markAsPending
+          markAsDelivery
+            ? 'bg-gradient-to-r from-sky-500 to-indigo-500 shadow-lg shadow-sky-500/30 hover:-translate-y-0.5'
+            : markAsPending
             ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-lg shadow-amber-500/30 hover:-translate-y-0.5'
             : 'bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 shadow-lg shadow-purple-500/30 hover:-translate-y-0.5 hover:shadow-purple-500/40'
         }`}
@@ -2392,6 +2450,8 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlusCircle className="h-5 w-5" />}
         {submitting
           ? lang === 'en' ? 'Creating bill…' : 'बिल बनाउँदै…'
+          : markAsDelivery
+          ? lang === 'en' ? 'Create delivery bill' : 'डेलिभरी बिल बनाउनुहोस्'
           : markAsPending
           ? lang === 'en' ? 'Create pending bill' : 'बाँकी बिल बनाउनुहोस्'
           : lang === 'en' ? 'Create bill' : 'बिल बनाउनुहोस्'}
@@ -2399,7 +2459,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
       {!canCreateBill && !submitting && (
         <p className="-mt-1 text-center text-xs text-slate-400">
-          {selectedMethods.size === 0 && !markAsPending
+          {selectedMethods.size === 0 && !markAsPending && !markAsDelivery
             ? lang === 'en' ? 'Choose how the customer is paying, or mark as pay later' : 'भुक्तानी विधि छान्नुहोस्'
             : lang === 'en' ? 'The amounts must add up to the grand total' : 'पूरा रकम पुग्ने गरी प्रविष्ट गर्नुहोस्'}
         </p>
@@ -2754,6 +2814,17 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                   </section>
                 )}
 
+                                {(selectedOrder.customerPhone || selectedOrder.customerAddress) && (
+                  <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                    {selectedOrder.customerPhone && (
+                      <span className="flex items-center gap-1.5 font-semibold"><Phone className="h-4 w-4 text-purple-500" /> {selectedOrder.customerPhone}</span>
+                    )}
+                    {selectedOrder.customerAddress && (
+                      <span className="flex items-center gap-1.5 font-semibold"><MapPin className="h-4 w-4 text-purple-500" /> {selectedOrder.customerAddress}</span>
+                    )}
+                  </div>
+                )}
+
                 {selectedOrder.orderNote && (
                   <div className="flex shrink-0 items-start gap-2.5 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                     <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
@@ -2925,7 +2996,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     )}
                   </div>
 
-                  {selectedMethods.size === 0 && !markAsPending && (
+                 {selectedMethods.size === 0 && !markAsPending && !markAsDelivery && (
                     <div className="flex items-start gap-2.5 rounded-2xl bg-purple-50/70 px-4 py-3 text-xs text-purple-900 ring-1 ring-inset ring-purple-100">
                       <Info className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
                       <span>
@@ -3059,6 +3130,70 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                         {lang === 'en' ? 'Save the bill and collect payment later' : 'बिल राख्नुहोस्, भुक्तानी पछि लिनुहोस्'}
                       </span>
                     </span>
+                    
+                  {/* 🛵 Delivery (collect money later, print bill for rider) */}
+                  <button
+                    type="button"
+                    onClick={toggleDelivery}
+                    aria-pressed={markAsDelivery}
+                    className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${FOCUS} ${
+                      markAsDelivery
+                        ? 'border-sky-400 bg-sky-50'
+                        : 'border-dashed border-slate-200 hover:border-sky-300 hover:bg-sky-50/40'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                        markAsDelivery ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <Bike className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-sm font-bold ${markAsDelivery ? 'text-sky-800' : 'text-slate-800'}`}>
+                        {lang === 'en' ? 'Delivery (collect later)' : 'डेलिभरी (पछि लिने)'}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {lang === 'en' ? 'Print the bill for the rider. Mark it paid in Delivery Bills.' : 'राइडरलाई बिल दिनुहोस्। डेलिभरी बिलमा भुक्तानी गर्नुहोस्।'}
+                      </span>
+                    </span>
+                    {markAsDelivery && <CheckCircle2 className="h-5 w-5 shrink-0 text-sky-600" />}
+                  </button>
+
+                  {markAsDelivery && (
+                    <section className="cb-fade space-y-2.5 rounded-2xl border border-sky-200 bg-sky-50/50 p-4" aria-label={tr(lang, 'Delivery details', 'डेलिभरी विवरण')}>
+                      <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                        <MapPin className="h-4 w-4 text-sky-600" />
+                        {tr(lang, 'Delivery details', 'डेलिभरी विवरण')}
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {tr(lang, 'Optional', 'ऐच्छिक')}
+                        </span>
+                      </p>
+                      <div className="relative">
+                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          value={deliveryPhone}
+                          onChange={(e) => setDeliveryPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
+                          placeholder={tr(lang, 'Phone number', 'फोन नम्बर')}
+                          aria-label={tr(lang, 'Delivery phone number', 'डेलिभरी फोन नम्बर')}
+                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                        />
+                      </div>
+                      <div className="relative">
+                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value.slice(0, 200))}
+                          placeholder={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
+                          aria-label={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
+                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                        />
+                      </div>
+                    </section>
+                  )}
                     {markAsPending && <CheckCircle2 className="h-5 w-5 shrink-0 text-amber-600" />}
                   </button>
 
@@ -3182,7 +3317,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
 
                   {/* Loyalty — only when payment is collected now */}
-                  {!markAsPending && (
+                  {!markAsPending && !markAsDelivery && (
                     <div className="space-y-2.5 border-t border-slate-100 pt-4">
                       <div className="flex items-center justify-between">
                         <p className="flex items-center gap-2 text-sm font-bold text-slate-900">

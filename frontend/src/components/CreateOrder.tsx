@@ -23,6 +23,8 @@ import {
   Info,
   Check,
   History,
+  Phone,
+  MapPin,
 } from 'lucide-react';
 import MenuImage from './MenuImage';
 
@@ -131,6 +133,8 @@ interface CustomerItem {
   id: string;
   restaurantId: string;
   customerName: string;
+  customerPhone: string;
+  customerAddress: string;
 }
 
 interface CartLine {
@@ -173,6 +177,8 @@ const mapRawToCustomer = (raw: any): CustomerItem => ({
   id: raw._id || raw.id,
   restaurantId: String(raw.restaurantId?._id || raw.restaurantId || ''),
   customerName: String(raw.customerName || '').trim(),
+  customerPhone: String(raw.customerPhone || '').trim(),
+  customerAddress: String(raw.customerAddress || '').trim(),
 });
 
 const isTableFull = (t: TableItem) => t.capacity > 0 && t.occupiedSeats >= t.capacity;
@@ -256,6 +262,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
 
   // Order
   const [orderBy, setOrderBy] = useState<OrderBy>('table');
+    const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -372,21 +380,23 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     }
   };
 
-  // Saves a NEW customer name (only if it is not already saved for this restaurant)
-  const saveCustomerName = async (name: string) => {
+  // Saves the customer (name + phone + address). New name → new customer.
+  // Same name with a new phone/address → the saved details are updated.
+  const saveCustomer = async (name: string, phone: string, address: string) => {
     const clean = name.trim();
     if (!clean || !restaurantId) return;
-    const exists = customers.some((c) => c.customerName.toLowerCase() === clean.toLowerCase());
-    if (exists) return;
+    const saved = customers.find((c) => c.customerName.toLowerCase() === clean.toLowerCase());
+    const changed = !saved || (phone.trim() && phone.trim() !== saved.customerPhone) || (address.trim() && address.trim() !== saved.customerAddress);
+    if (!changed) return;
     try {
       const res = await fetch(CUSTOMERS_URL, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ restaurantId, customerName: clean }),
+        body: JSON.stringify({ customerName: clean, customerPhone: phone.trim(), customerAddress: address.trim() }),
       });
       if (res.ok) fetchCustomers(true);
     } catch (err) {
-      console.error('Could not save customer name:', err);
+      console.error('Could not save customer:', err);
     }
   };
 
@@ -438,7 +448,9 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // Saved names that match what is typed (all recent names when the box is empty)
   const customerSuggestions = useMemo(() => {
     const q = customerName.toLowerCase().trim();
-    const list = q ? customers.filter((c) => c.customerName.toLowerCase().includes(q)) : customers;
+    const list = q
+      ? customers.filter((c) => c.customerName.toLowerCase().includes(q) || c.customerPhone.includes(q))
+      : customers;
     return list.slice(0, 8);
   }, [customers, customerName]);
 
@@ -465,21 +477,23 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
       ? 'Add at least one item from the menu.'
       : orderBy === 'table' && !tableNumber
       ? 'Choose a table, or switch to customer name.'
-      : orderBy === 'name' && !customerName.trim()
-      ? 'Enter the customer name, or switch to a table.'
       : '';
   const canOpenConfirm = !missing && !isSubmitting;
 
   // What will be saved on the order
   const finalTableNumber = orderBy === 'table' ? selectedTable?.tableName || tableNumber.trim() : NO_TABLE_LABEL;
+  // Customer details are all optional: no name → "Guest"
   const finalCustomerName =
-    orderBy === 'name' ? customerName.trim() : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
+    orderBy === 'name' ? customerName.trim() || 'Guest' : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
 
   // ==========================================
   // CUSTOMER NAME PICKER HELPERS
   // ==========================================
-  const pickCustomer = (name: string) => {
-    setCustomerName(name);
+  const pickCustomer = (c: CustomerItem) => {
+    setCustomerName(c.customerName);
+    // Fill the saved phone / address (you can still change them)
+    if (c.customerPhone) setCustomerPhone(c.customerPhone);
+    if (c.customerAddress) setCustomerAddress(c.customerAddress);
     setShowSuggestions(false);
     setHighlight(-1);
     setErrorMessage('');
@@ -498,7 +512,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     } else if (e.key === 'Enter') {
       if (showSuggestions && highlight >= 0 && customerSuggestions[highlight]) {
         e.preventDefault();
-        pickCustomer(customerSuggestions[highlight].customerName);
+pickCustomer(customerSuggestions[highlight]);
       } else {
         setShowSuggestions(false);
       }
@@ -527,7 +541,11 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     setErrorMessage('');
     setShowSuggestions(false);
     if (target === 'name') setTableNumber('');
-    else setCustomerName('');
+    else {
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerAddress('');
+    }
     setOrderBy(target);
   };
 
@@ -582,6 +600,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     setErrorMessage('');
 
     const currentStaffId = (localStorage.getItem('staffId') || '').trim();
+        const phoneToSave = orderBy === 'name' ? customerPhone.trim() : '';
+    const addressToSave = orderBy === 'name' ? customerAddress.trim() : '';
     // Only a real typed/selected name is saved as a customer (not the "Guest (Table)" fallback)
     const nameToSave = orderBy === 'name' ? customerName.trim() : '';
 
@@ -593,6 +613,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
           restaurantId,
           staffId: currentStaffId,
           customerName: finalCustomerName,
+          customerPhone: phoneToSave,
+          customerAddress: addressToSave,
           tableNumber: finalTableNumber,
           orderNote: orderNote.trim(),
           items: cart.map((line) => ({
@@ -613,10 +635,12 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
         showToast('Order placed successfully!', 'success');
 
         // Save the customer name (only if it is new). Does not block the order.
-        if (nameToSave) saveCustomerName(nameToSave);
+        if (nameToSave) saveCustomer(nameToSave, phoneToSave, addressToSave);
 
         setCart([]);
         setCustomerName('');
+        setCustomerPhone('');
+        setCustomerAddress('');
         setTableNumber('');
         setOrderNote('');
         switchedByUser.current = false;
@@ -715,8 +739,12 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                   ) : (
                     <UserCircle2 className="h-3.5 w-3.5 shrink-0 text-purple-500" />
                   )}
-                  {orderBy === 'table' ? 'Table' : 'Customer name'}
-                  <span className="text-rose-500">*</span>
+                  {orderBy === 'table' ? 'Table' : 'Customer details'}
+                  {orderBy === 'table' ? (
+                    <span className="text-rose-500">*</span>
+                  ) : (
+                    <span className="font-medium text-slate-400">(optional)</span>
+                  )}
                   {orderBy === 'table' && selectedTable && (
                     <span className="truncate text-[11px] font-semibold text-purple-700">· {selectedTable.tableName}</span>
                   )}
@@ -725,13 +753,13 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                 <button
                   type="button"
                   onClick={() => switchOrderBy()}
-                  title={orderBy === 'table' ? 'Take the order by customer name instead' : 'Take the order by table instead'}
+                  title={orderBy === 'table' ? 'Take the order with customer details instead' : 'Take the order by table instead'}
                   className="group inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-purple-200 bg-white py-1 pl-1 pr-2.5 text-[11px] font-bold text-purple-700 shadow-sm transition-all hover:border-purple-600 hover:bg-purple-600 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20"
                 >
                   <span className="rounded-full bg-purple-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white transition-colors group-hover:bg-white group-hover:text-purple-700">
                     or
                   </span>
-                  {orderBy === 'table' ? 'Customer name' : 'Pick a table'}
+                  {orderBy === 'table' ? 'Customer details' : 'Pick a table'}
                   <ArrowLeftRight className="h-3 w-3 transition-transform group-hover:rotate-180" />
                 </button>
               </div>
@@ -760,7 +788,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                         onClick={() => switchOrderBy('name')}
                         className="cursor-pointer font-bold text-purple-700 underline"
                       >
-                        take the order by customer name
+                        take the order with customer details
                       </button>
                       .
                     </div>
@@ -817,7 +845,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                             onClick={() => switchOrderBy('name')}
                             className="cursor-pointer rounded-lg bg-amber-500 px-2.5 py-1 font-bold text-white transition hover:bg-amber-600"
                           >
-                            Use name instead
+                            Use customer details
                           </button>
                         </div>
                       )}
@@ -891,7 +919,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                                     role="option"
                                     aria-selected={isSelected}
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => pickCustomer(c.customerName)}
+                                    onClick={() => pickCustomer(c)}
                                     onMouseEnter={() => setHighlight(i)}
                                     className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                       highlight === i ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
@@ -900,7 +928,14 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100 text-[11px] font-bold uppercase text-purple-700">
                                       {c.customerName.charAt(0)}
                                     </span>
-                                    <span className="min-w-0 flex-1 truncate font-semibold">{c.customerName}</span>
+                                                                   <span className="min-w-0 flex-1">
+                                      <span className="block truncate font-semibold">{c.customerName}</span>
+                                      {(c.customerPhone || c.customerAddress) && (
+                                        <span className="block truncate text-[11px] text-slate-400">
+                                          {[c.customerPhone, c.customerAddress].filter(Boolean).join(' · ')}
+                                        </span>
+                                      )}
+                                    </span>
                                     {isSelected && <Check className="h-4 w-4 shrink-0 text-purple-600" />}
                                   </button>
                                 );
@@ -911,22 +946,51 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                       )}
                     </div>
 
+                                      {/* Phone + address (optional) */}
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      <div className="relative">
+                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
+                          placeholder="Phone number"
+                          aria-label="Customer phone number"
+                          autoComplete="off"
+                          className={`${inputBase} pl-10`}
+                        />
+                      </div>
+                      <div className="relative">
+                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={customerAddress}
+                          onChange={(e) => setCustomerAddress(e.target.value.slice(0, 200))}
+                          placeholder="Address"
+                          aria-label="Customer address"
+                          autoComplete="off"
+                          className={`${inputBase} pl-10`}
+                        />
+                      </div>
+                    </div>
+
                     {typedName ? (
                       isExistingCustomer ? (
                         <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-600">
                           <CheckCircle2 className="h-3 w-3" />
-                          Saved customer. This name will be used.
+                          Saved customer. Their saved phone and address were filled in.
                         </p>
                       ) : (
                         <p className="flex items-center gap-1 text-[11px] font-medium text-purple-600">
                           <Info className="h-3 w-3" />
-                          New customer. The name will be saved after the order is placed.
+                          New customer. The details will be saved after the order is placed.
                         </p>
                       )
                     ) : (
                       <p className="flex items-center gap-1 text-[11px] text-slate-400">
                         <Info className="h-3 w-3" />
-                        No table needed. Type a new name or pick a saved customer.
+                        All optional. Leave empty to order as "Guest".
                       </p>
                     )}
                   </div>
@@ -1399,11 +1463,16 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
                     {orderBy === 'table' ? 'Table' : 'Customer'}
                   </p>
                   <p className="truncate font-bold text-slate-900">
-                    {orderBy === 'table' ? selectedTable?.tableName || tableNumber : customerName.trim()}
+                    {orderBy === 'table' ? selectedTable?.tableName || tableNumber : finalCustomerName}
                   </p>
+                  {orderBy === 'name' && (customerPhone.trim() || customerAddress.trim()) && (
+                    <p className="truncate text-xs text-slate-500">
+                      {[customerPhone.trim(), customerAddress.trim()].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                 </div>
                 <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
-                  {orderBy === 'table' ? 'Dine-in by table' : isExistingCustomer ? 'Saved customer' : 'New customer'}
+{orderBy === 'table' ? 'Dine-in by table' : !typedName ? 'Guest' : isExistingCustomer ? 'Saved customer' : 'New customer'}
                 </span>
               </div>
 

@@ -129,6 +129,12 @@ const LANE_STYLES: Record<string, LaneStyle> = {
 // TIME HELPERS
 // ==========================================
 
+// "No Table" = order taken with customer details (no table). Hide it on tickets.
+const isRealTable = (t?: string) => {
+  const v = String(t || '').trim().toLowerCase();
+  return !!v && v !== 'no table' && v !== 'n/a';
+};
+
 function minutesSince(iso?: string, now: number = Date.now()): number {
   if (!iso) return 0;
   const then = new Date(iso).getTime();
@@ -371,7 +377,7 @@ function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
     <h1>KITCHEN TICKET</h1>
   </div>
   <div class="meta">
-    <div class="meta-row"><span class="meta-label">Table:</span><span class="meta-val">${escapeHtml(order.tableNumber)}</span></div>
+    ${isRealTable(order.tableNumber) ? `<div class="meta-row"><span class="meta-label">Table:</span><span class="meta-val">${escapeHtml(order.tableNumber)}</span></div>` : ''}
     <div class="meta-row"><span class="meta-label">Customer:</span><span class="meta-val">${escapeHtml(order.customerName)}</span></div>
     <div class="meta-row"><span class="meta-label">Order #:</span><span class="meta-val">${escapeHtml(order._id.slice(-6).toUpperCase())}</span></div>
     <div class="meta-row"><span class="meta-label">Placed:</span><span class="meta-val">${escapeHtml(formatTicketDateTime(order.createdAt))}</span></div>
@@ -493,9 +499,9 @@ function TicketCard({
         {/* Ticket header: table + elapsed time + reprint */}
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-[11px] font-medium text-purple-400">Table</p>
+            <p className="text-[11px] font-medium text-purple-400">{isRealTable(order.tableNumber) ? 'Table' : 'Customer'}</p>
             <p className="font-mono text-2xl font-bold text-gray-900 leading-none mt-0.5">
-              {order.tableNumber}
+              {isRealTable(order.tableNumber) ? order.tableNumber : order.customerName}
             </p>
           </div>
           <div className="flex items-start gap-2">
@@ -757,7 +763,7 @@ export default function KitchenDisplay() {
             const first = newPendingTickets[0];
             setFlash(
               newPendingTickets.length === 1
-                ? `New order — Table ${first.tableNumber}`
+                ? `New order — ${isRealTable(first.tableNumber) ? `Table ${first.tableNumber}` : first.customerName}`
                 : `${newPendingTickets.length} new orders`
             );
             if (soundEnabledRef.current) playChime('new');
@@ -765,7 +771,7 @@ export default function KitchenDisplay() {
             const first = updatedTickets[0];
             setFlash(
               updatedTickets.length === 1
-                ? `Order updated — Table ${first.tableNumber}`
+                ? `Order updated — ${isRealTable(first.tableNumber) ? `Table ${first.tableNumber}` : first.customerName}`
                 : `${updatedTickets.length} orders updated`
             );
             if (soundEnabledRef.current) playChime('update');

@@ -48,7 +48,7 @@ type StaffRole = 'Manager' | 'Waiter' | 'Kitchen Staff' | 'Cashier';
 type AppView =
   | 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings'
   | 'orders' | 'tables' | 'kitchen' | 'createbill' | 'totalorder'
-  | 'unpaidbill' | 'stock' | 'notifications' | 'delivery' | 'attendance';
+| 'unpaidbill' | 'deliverybill' | 'stock' | 'notifications' | 'delivery' | 'attendance';
 
 interface RoleConfig {
   label: StaffRole;
@@ -59,7 +59,7 @@ interface RoleConfig {
 const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   Manager: {
     label: 'Manager',
-    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'stock','notifications','delivery', 'attendance'],
+    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'deliverybill', 'stock','notifications','delivery', 'attendance'],
     defaultView: 'dashboard',
   },
   Waiter: {
@@ -74,7 +74,7 @@ const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   },
   Cashier: {
     label: 'Cashier',
-    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'stock', 'delivery'],
+    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'deliverybill', 'stock', 'delivery'],
     defaultView: 'createbill',
   },
 };
@@ -148,6 +148,7 @@ const NAV_ITEMS: NavItem[] = [
 
   { view: 'createbill', icon: FilePlus, group: 'billing', label: { en: 'Create Bill', ne: 'बिल बनाउनुहोस्' } },
   { view: 'unpaidbill', icon: Clock, group: 'billing', label: { en: 'Pending Bills', ne: 'बाँकी बिलहरू' } },
+    { view: 'deliverybill', icon: Bike, group: 'billing', label: { en: 'Delivery Bills', ne: 'डेलिभरी बिलहरू' } },
   { view: 'totalorder', icon: TrendingUp, group: 'billing', label: { en: 'Total Sales', ne: 'कुल बिक्री' } },
   { view: 'billing', icon: ShieldCheck, group: 'billing', label: { en: 'Billing & VAT Audit', ne: 'बिलिङ र भ्याट अडिट' } },
 
@@ -1342,6 +1343,8 @@ const { lang, setLang } = useLang();
             )}
 
             {currentView === 'unpaidbill' && canAccess('unpaidbill') && <UnpaidBill lang={lang} />}
+
+                        {currentView === 'deliverybill' && canAccess('deliverybill') && <UnpaidBill lang={lang} mode="Delivery" />}
 
             {currentView === 'kitchen' && canAccess('kitchen') && <KitchenDisplay />}
 

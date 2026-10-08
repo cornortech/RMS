@@ -52,12 +52,14 @@ const restaurantBillingSchema = mongoose.Schema({
         type: String, 
         default: "Guest",
     },
+        customerPhone: { type: String, default: "" },
+    customerAddress: { type: String, default: "" },
     tableNumber: {
         type: String,
     },
     paymentMethod: {
         type: String,
-        enum: ["Cash", "eSewa", "Khalti", "Fonepay", "IMEPay",  "Card", "Due","Pending","Split"],
+        enum: ["Cash", "eSewa", "Khalti", "Fonepay", "IMEPay",  "Card", "Due","Pending","Split","Delivery"],
         default: "Cash",
     },
     cashPaidMoney: {
