@@ -3131,34 +3131,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       </span>
                     </span>
                     
-                  {/* 🛵 Delivery (collect money later, print bill for rider) */}
-                  <button
-                    type="button"
-                    onClick={toggleDelivery}
-                    aria-pressed={markAsDelivery}
-                    className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${FOCUS} ${
-                      markAsDelivery
-                        ? 'border-sky-400 bg-sky-50'
-                        : 'border-dashed border-slate-200 hover:border-sky-300 hover:bg-sky-50/40'
-                    }`}
-                  >
-                    <span
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                        markAsDelivery ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      <Bike className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-sm font-bold ${markAsDelivery ? 'text-sky-800' : 'text-slate-800'}`}>
-                        {lang === 'en' ? 'Delivery (collect later)' : 'डेलिभरी (पछि लिने)'}
-                      </span>
-                      <span className="block text-[11px] text-slate-500">
-                        {lang === 'en' ? 'Print the bill for the rider. Mark it paid in Delivery Bills.' : 'राइडरलाई बिल दिनुहोस्। डेलिभरी बिलमा भुक्तानी गर्नुहोस्।'}
-                      </span>
-                    </span>
-                    {markAsDelivery && <CheckCircle2 className="h-5 w-5 shrink-0 text-sky-600" />}
-                  </button>
+              
 
                   {markAsDelivery && (
                     <section className="cb-fade space-y-2.5 rounded-2xl border border-sky-200 bg-sky-50/50 p-4" aria-label={tr(lang, 'Delivery details', 'डेलिभरी विवरण')}>
@@ -3194,6 +3167,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       </div>
                     </section>
                   )}
+
                     {markAsPending && <CheckCircle2 className="h-5 w-5 shrink-0 text-amber-600" />}
                   </button>
 
@@ -3314,7 +3288,34 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       )}
                     </section>
                   )}
-
+    {/* 🛵 Delivery (collect money later, print bill for rider) */}
+                  <button
+                    type="button"
+                    onClick={toggleDelivery}
+                    aria-pressed={markAsDelivery}
+                    className={`flex w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${FOCUS} ${
+                      markAsDelivery
+                        ? 'border-sky-400 bg-sky-50'
+                        : 'border-dashed border-slate-200 hover:border-sky-300 hover:bg-sky-50/40'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                        markAsDelivery ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <Bike className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-sm font-bold ${markAsDelivery ? 'text-sky-800' : 'text-slate-800'}`}>
+                        {lang === 'en' ? 'Delivery (collect later)' : 'डेलिभरी (पछि लिने)'}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {lang === 'en' ? 'Print the bill for the rider. Mark it paid in Delivery Bills.' : 'राइडरलाई बिल दिनुहोस्। डेलिभरी बिलमा भुक्तानी गर्नुहोस्।'}
+                      </span>
+                    </span>
+                    {markAsDelivery && <CheckCircle2 className="h-5 w-5 shrink-0 text-sky-600" />}
+                  </button>
 
                   {/* Loyalty — only when payment is collected now */}
                   {!markAsPending && !markAsDelivery && (
