@@ -3104,7 +3104,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     })}
                   </div>
 
-                  {/* Pay later */}
+              {/* Pay later */}
                   <button
                     type="button"
                     onClick={togglePending}
@@ -3130,44 +3130,6 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                         {lang === 'en' ? 'Save the bill and collect payment later' : 'बिल राख्नुहोस्, भुक्तानी पछि लिनुहोस्'}
                       </span>
                     </span>
-                    
-              
-
-                  {markAsDelivery && (
-                    <section className="cb-fade space-y-2.5 rounded-2xl border border-sky-200 bg-sky-50/50 p-4" aria-label={tr(lang, 'Delivery details', 'डेलिभरी विवरण')}>
-                      <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                        <MapPin className="h-4 w-4 text-sky-600" />
-                        {tr(lang, 'Delivery details', 'डेलिभरी विवरण')}
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          {tr(lang, 'Optional', 'ऐच्छिक')}
-                        </span>
-                      </p>
-                      <div className="relative">
-                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="tel"
-                          inputMode="tel"
-                          value={deliveryPhone}
-                          onChange={(e) => setDeliveryPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
-                          placeholder={tr(lang, 'Phone number', 'फोन नम्बर')}
-                          aria-label={tr(lang, 'Delivery phone number', 'डेलिभरी फोन नम्बर')}
-                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
-                        />
-                      </div>
-                      <div className="relative">
-                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          value={deliveryAddress}
-                          onChange={(e) => setDeliveryAddress(e.target.value.slice(0, 200))}
-                          placeholder={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
-                          aria-label={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
-                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
-                        />
-                      </div>
-                    </section>
-                  )}
-
                     {markAsPending && <CheckCircle2 className="h-5 w-5 shrink-0 text-amber-600" />}
                   </button>
 
@@ -3316,6 +3278,41 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     </span>
                     {markAsDelivery && <CheckCircle2 className="h-5 w-5 shrink-0 text-sky-600" />}
                   </button>
+
+                  {markAsDelivery && (
+                    <section className="cb-fade space-y-2.5 rounded-2xl border border-sky-200 bg-sky-50/50 p-4" aria-label={tr(lang, 'Delivery details', 'डेलिभरी विवरण')}>
+                      <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                        <MapPin className="h-4 w-4 text-sky-600" />
+                        {tr(lang, 'Delivery details', 'डेलिभरी विवरण')}
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {tr(lang, 'Optional', 'ऐच्छिक')}
+                        </span>
+                      </p>
+                      <div className="relative">
+                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          value={deliveryPhone}
+                          onChange={(e) => setDeliveryPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
+                          placeholder={tr(lang, 'Phone number', 'फोन नम्बर')}
+                          aria-label={tr(lang, 'Delivery phone number', 'डेलिभरी फोन नम्बर')}
+                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                        />
+                      </div>
+                      <div className="relative">
+                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value.slice(0, 200))}
+                          placeholder={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
+                          aria-label={tr(lang, 'Delivery address', 'डेलिभरी ठेगाना')}
+                          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                        />
+                      </div>
+                    </section>
+                  )}
 
                   {/* Loyalty — only when payment is collected now */}
                   {!markAsPending && !markAsDelivery && (
