@@ -57,6 +57,7 @@ interface Order {
   _id: string;
   restaurantId: string;
   customerName: string;
+  customerPhone?: string;
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
@@ -379,6 +380,7 @@ function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
   <div class="meta">
     ${isRealTable(order.tableNumber) ? `<div class="meta-row"><span class="meta-label">Table:</span><span class="meta-val">${escapeHtml(order.tableNumber)}</span></div>` : ''}
     <div class="meta-row"><span class="meta-label">Customer:</span><span class="meta-val">${escapeHtml(order.customerName)}</span></div>
+        ${order.customerPhone ? `<div class="meta-row"><span class="meta-label">Phone:</span><span class="meta-val">${escapeHtml(order.customerPhone)}</span></div>` : ''}
     <div class="meta-row"><span class="meta-label">Order #:</span><span class="meta-val">${escapeHtml(order._id.slice(-6).toUpperCase())}</span></div>
     <div class="meta-row"><span class="meta-label">Placed:</span><span class="meta-val">${escapeHtml(formatTicketDateTime(order.createdAt))}</span></div>
   </div>
@@ -526,9 +528,12 @@ function TicketCard({
 
         {/* Customer name + item count chip */}
         <div className="flex items-center justify-between border-t border-purple-50 pt-2.5">
-          <p className="text-sm font-semibold text-gray-800 truncate pr-2">
-            {order.customerName}
-          </p>
+          <div className="min-w-0 pr-2">
+            <p className="text-sm font-semibold text-gray-800 truncate">{order.customerName}</p>
+            {order.customerPhone && (
+              <p className="flex items-center gap-1 truncate font-mono text-xs font-semibold text-gray-500">📞 {order.customerPhone}</p>
+            )}
+          </div>
           <span className={`shrink-0 text-[11px] font-bold ${styles.chipText} ${styles.chipBg} px-2.5 py-0.5 rounded-full`}>
             {itemCount} item{itemCount !== 1 ? 's' : ''}
           </span>
