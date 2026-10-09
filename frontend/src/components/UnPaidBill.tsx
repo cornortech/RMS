@@ -69,6 +69,7 @@ interface Bill {
   taxableAmount?: number;
   vatCollected?: number;
   vatRate?: number;
+  deliveryCharge?: number;
   grandTotal: number;
   restaurantId: string;
   createdAt?: string;
@@ -323,6 +324,7 @@ interface BillSummary {
   discount: number;
   taxableAmount: number;
   vatCollected: number;
+  deliveryCharge: number;
   grandTotal: number;
 }
 
@@ -363,6 +365,7 @@ function summarizeBills(bills: Bill[]): BillSummary {
     discount: bills.reduce((s, b) => s + (b.discount || 0), 0),
     taxableAmount: bills.reduce((s, b) => s + (b.taxableAmount ?? b.subtotal ?? 0), 0),
     vatCollected: bills.reduce((s, b) => s + (b.vatCollected || 0), 0),
+        deliveryCharge: bills.reduce((s, b) => s + (b.deliveryCharge || 0), 0),
     grandTotal: bills.reduce((s, b) => s + (b.grandTotal || 0), 0),
   };
 }
@@ -1834,6 +1837,12 @@ function MergedBillModal({
                     <span className="font-mono">NPR {money(group.vatCollected)}</span>
                   </div>
                 )}
+                                {group.deliveryCharge > 0 && (
+                  <div className="flex justify-between">
+                    <span>Delivery Charge:</span>
+                    <span className="font-mono">NPR {money(group.deliveryCharge)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t border-slate-400 pt-1 text-[11px] font-bold text-slate-950">
                   <span>GRAND TOTAL:</span>
                   <span className="font-mono text-purple-700">NPR {money(group.grandTotal)}</span>
@@ -2328,6 +2337,12 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
                 <span className="font-mono">NPR {money(payTarget?.vatCollected ?? 0)}</span>
               </div>
             )}
+                        {(payTarget?.deliveryCharge ?? 0) > 0 && (
+              <div className="flex justify-between text-sky-700">
+                <span>{lang === 'en' ? 'Delivery charge' : 'डेलिभरी शुल्क'}</span>
+                <span className="font-mono">NPR {money(payTarget?.deliveryCharge ?? 0)}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -2705,6 +2720,12 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
                       <div className="flex justify-between text-slate-500">
                         <span className="font-semibold">{lang === 'en' ? 'VAT' : 'भ्याट'}</span>
                         <span className="font-mono">NPR {money(selectedGroup.vatCollected)}</span>
+                      </div>
+                    )}
+                                        {selectedGroup.deliveryCharge > 0 && (
+                      <div className="flex justify-between text-sky-700">
+                        <span className="font-semibold">{lang === 'en' ? 'Delivery charge' : 'डेलिभरी शुल्क'}</span>
+                        <span className="font-mono">NPR {money(selectedGroup.deliveryCharge)}</span>
                       </div>
                     )}
                   </div>

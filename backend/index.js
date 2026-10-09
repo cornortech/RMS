@@ -1014,6 +1014,7 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             vatRate: parseNum(getValue(formData.vatRate, 0)),
             taxableAmount: parseNum(getValue(formData.taxableAmount, 0)),
             vatCollected: parseNum(getValue(formData.vatCollected, 0)),
+            deliveryCharge: Math.min(Math.max(parseNum(getValue(formData.deliveryCharge, 0)), 0), 100000),            
             grandTotal: parseNum(getValue(formData.grandTotal, 0)),
             restaurantId: restaurantId,
             orderId: getValue(formData.orderId, ""),
@@ -1078,6 +1079,7 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             discount: bill.discount,
             taxableAmount: bill.taxableAmount,
             vatCollected: bill.vatCollected,
+            deliveryCharge: bill.deliveryCharge || 0,            
             grandTotal: bill.grandTotal,
             restaurantId: bill.restaurantId,
             createdAt: bill.createdAt

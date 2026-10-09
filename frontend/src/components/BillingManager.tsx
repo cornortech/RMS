@@ -335,6 +335,12 @@ function InvoiceModal({
                     <span className="font-mono">NPR {money(bill.vatCollected)}</span>
                   </div>
                 )}
+                                {((bill as any).deliveryCharge ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span>Delivery Charge:</span>
+                    <span className="font-mono">NPR {money((bill as any).deliveryCharge)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t-2 border-black pt-1 text-[11px] font-black">
                   <span>GRAND TOTAL:</span>
                   <span className="font-mono">NPR {money(bill.grandTotal)}</span>

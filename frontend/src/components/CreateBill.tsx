@@ -407,7 +407,10 @@ function ServedOrderCard({
   const extra = items.length - 3;
   const withTable = hasTable(order.tableNumber);
   const noName = isPlaceholderName(order.customerName);
-  const displayName = (order.customerName || '').trim() || 'Guest';
+  const phone = (order.customerPhone || '').trim();
+  // No real name but we have a phone → show the phone in place of the name
+  const showPhoneAsName = noName && !!phone;
+  const displayName = showPhoneAsName ? phone : (order.customerName || '').trim() || 'Guest';
 
   return (
     <button
@@ -433,12 +436,23 @@ function ServedOrderCard({
             } text-sm font-extrabold text-white shadow-sm`}
             aria-hidden="true"
           >
-            {noName ? <User className="h-5 w-5" /> : initials(displayName)}
+            {showPhoneAsName ? <Phone className="h-5 w-5" /> : noName ? <User className="h-5 w-5" /> : initials(displayName)}
           </div>
           <div className="min-w-0 flex-1">
-            <p className={`truncate text-[15px] font-bold leading-tight ${noName ? 'text-slate-500' : 'text-slate-900'}`}>
-              {displayName}
+            <p className={`truncate text-[15px] font-bold leading-tight ${noName && !showPhoneAsName ? 'text-slate-500' : 'text-slate-900'}`}>
+              {showPhoneAsName ? (
+                <span className="inline-flex items-center gap-1.5 font-mono">
+                  <Phone className="h-3.5 w-3.5 text-purple-500" /> {phone}
+                </span>
+              ) : (
+                displayName
+              )}
             </p>
+            {!noName && phone && (
+              <p className="mt-0.5 flex items-center gap-1 truncate font-mono text-xs font-semibold text-slate-500">
+                <Phone className="h-3 w-3 shrink-0" /> {phone}
+              </p>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {withTable ? (
                 <span className="inline-flex items-center gap-0.5 rounded-md bg-purple-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
@@ -1693,6 +1707,12 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
                       <span className="font-mono">NPR {money(bill.vatCollected)}</span>
                     </div>
                   )}
+                                    {(bill.deliveryCharge ?? 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span>Delivery Charge:</span>
+                      <span className="font-mono">NPR {money(bill.deliveryCharge)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t-2 border-black pt-1 text-xs font-black">
                     <span>GRAND TOTAL:</span>
                     <span className="font-mono">NPR {money(bill.grandTotal)}</span>
@@ -1783,6 +1803,8 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const [markAsDelivery, setMarkAsDelivery] = useState(false);
   const [deliveryPhone, setDeliveryPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+    // 🛵 Delivery charge added on top of the bill (any payment method)
+  const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
   const [markAsPending, setMarkAsPending] = useState(false);
 
   // Discount can be entered as % OR flat Rs — the two inputs stay in sync.
@@ -1908,6 +1930,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setMarkAsDelivery(false);
     setDeliveryPhone(selectedOrder?.customerPhone || '');
     setDeliveryAddress(selectedOrder?.customerAddress || '');
+        setDeliveryCharge(0);
     setVatRate(DEFAULT_VAT_RATE);
     setQrMethod(null);
     setBillToName('');
@@ -2013,7 +2036,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const taxableAmount = Math.max(subtotal - discountAmount, 0);
   const hasVat = safeVatRate > 0;
   const vatCollected = hasVat ? (taxableAmount * safeVatRate) / 100 : 0;
-  const grandTotal = taxableAmount + vatCollected;
+  // Delivery charge is added after VAT (no VAT on it)
+  const safeDeliveryCharge = Math.min(Math.max(Number.isFinite(deliveryCharge) ? deliveryCharge : 0, 0), 100000);
+  const grandTotal = taxableAmount + vatCollected + safeDeliveryCharge;
 
   const suggestedLoyaltyPoints = suggestedPoints(grandTotal);
 
@@ -2160,6 +2185,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setMarkAsDelivery(false);
     setDeliveryPhone('');
     setDeliveryAddress('');
+    setDeliveryCharge(0);
     setDiscountPercent(0);
     setDiscountAmountInput(0);
     setDiscountMode('percent');
@@ -2229,6 +2255,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       vatRate: hasVat ? safeVatRate : 0,
       taxableAmount,
       vatCollected,
+      deliveryCharge: safeDeliveryCharge,
       grandTotal,
       restaurantId,
       orderId: selectedOrder._id,
@@ -2379,6 +2406,12 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                 {lang === 'en' ? 'VAT' : 'भ्याट'} ({safeVatRate}%)
               </span>
               <span className="font-mono">NPR {money(vatCollected)}</span>
+            </div>
+          )}
+          {safeDeliveryCharge > 0 && (
+            <div className="flex justify-between text-sky-700">
+              <span>{lang === 'en' ? 'Delivery charge' : 'डेलिभरी शुल्क'}</span>
+              <span className="font-mono">+NPR {money(safeDeliveryCharge)}</span>
             </div>
           )}
         </div>
@@ -2882,7 +2915,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                 <section className={`${CARD} shrink-0 p-5`} aria-labelledby="adjust-title">
                   <h3 id="adjust-title" className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
                     <Percent className="h-5 w-5 text-purple-600" />
-                    {lang === 'en' ? 'Discount and VAT' : 'छुट र भ्याट'}
+                    {lang === 'en' ? 'Discount, VAT and delivery' : 'छुट, भ्याट र डेलिभरी'}
                   </h3>
 
                   <div className="grid gap-5 xl:grid-cols-2">
@@ -2973,6 +3006,45 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* 🛵 Delivery charge (optional) — added to the grand total and printed on the bill */}
+                  <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-5">
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                      <Bike className="h-3.5 w-3.5 text-sky-600" />
+                      {lang === 'en' ? 'Delivery charge' : 'डेलिभरी शुल्क'}
+                      <span className="font-medium text-slate-400">({lang === 'en' ? 'optional' : 'ऐच्छिक'})</span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative w-40">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">NPR</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          value={deliveryCharge === 0 ? '' : deliveryCharge}
+                          onChange={(e) => setDeliveryCharge(Math.max(Number(e.target.value) || 0, 0))}
+                          placeholder="0.00"
+                          aria-label={lang === 'en' ? 'Delivery charge' : 'डेलिभरी शुल्क'}
+                          className={`${INPUT} cb-no-spin pl-11`}
+                        />
+                      </div>
+                      {[50, 100, 150].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setDeliveryCharge(deliveryCharge === v ? 0 : v)}
+                          aria-pressed={deliveryCharge === v}
+                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold transition active:scale-[0.96] ${FOCUS} ${
+                            deliveryCharge === v
+                              ? 'border-sky-300 bg-sky-50 text-sky-700'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700'
+                          }`}
+                        >
+                          +{v}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </section>

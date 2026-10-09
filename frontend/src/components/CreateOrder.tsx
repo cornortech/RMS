@@ -278,6 +278,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
 
   const orderPanelRef = useRef<HTMLDivElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+    const phoneInputRef = useRef<HTMLInputElement>(null);
   const switchedByUser = useRef(false);
   const toastTimer = useRef<number | null>(null);
   const blurTimer = useRef<number | null>(null);
@@ -298,7 +299,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // Focus the name box right after the user switches to "name"
   useEffect(() => {
     if (orderBy === 'name' && switchedByUser.current) {
-      window.setTimeout(() => nameInputRef.current?.focus(), 30);
+      window.setTimeout(() => phoneInputRef.current?.focus(), 30); // phone box is first now
     }
   }, [orderBy]);
 
@@ -489,6 +490,18 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // ==========================================
   // CUSTOMER NAME PICKER HELPERS
   // ==========================================
+  // Typing a phone number of a saved customer fills in their name and address
+  const handlePhoneChange = (value: string) => {
+    const clean = value.replace(/[^0-9+\-\s]/g, '').slice(0, 20);
+    setCustomerPhone(clean);
+    const digits = clean.replace(/\D/g, '');
+    if (digits.length < 7) return;
+    const match = customers.find((c) => c.customerPhone.replace(/\D/g, '') === digits);
+    if (!match) return;
+    if (!customerName.trim()) setCustomerName(match.customerName);
+    if (!customerAddress.trim() && match.customerAddress) setCustomerAddress(match.customerAddress);
+  };
+
   const pickCustomer = (c: CustomerItem) => {
     setCustomerName(c.customerName);
     // Fill the saved phone / address (you can still change them)
@@ -854,6 +867,35 @@ pickCustomer(customerSuggestions[highlight]);
                 ) : (
                   /* ---------- CUSTOMER NAME (type new OR pick a saved one) ---------- */
                   <div className="space-y-1.5">
+                                        {/* Phone + address first (optional) — the name comes below */}
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      <div className="relative">
+                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          ref={phoneInputRef}
+                          type="tel"
+                          inputMode="tel"
+                          value={customerPhone}
+                          onChange={(e) => handlePhoneChange(e.target.value)}
+                          placeholder="Phone number"
+                          aria-label="Customer phone number"
+                          autoComplete="off"
+                          className={`${inputBase} pl-10`}
+                        />
+                      </div>
+                      <div className="relative">
+                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={customerAddress}
+                          onChange={(e) => setCustomerAddress(e.target.value.slice(0, 200))}
+                          placeholder="Address"
+                          aria-label="Customer address"
+                          autoComplete="off"
+                          className={`${inputBase} pl-10`}
+                        />
+                      </div>
+                    </div>
                     <div className="relative">
                       <UserCircle2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
@@ -946,34 +988,6 @@ pickCustomer(customerSuggestions[highlight]);
                       )}
                     </div>
 
-                                      {/* Phone + address (optional) */}
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      <div className="relative">
-                        <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="tel"
-                          inputMode="tel"
-                          value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
-                          placeholder="Phone number"
-                          aria-label="Customer phone number"
-                          autoComplete="off"
-                          className={`${inputBase} pl-10`}
-                        />
-                      </div>
-                      <div className="relative">
-                        <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          value={customerAddress}
-                          onChange={(e) => setCustomerAddress(e.target.value.slice(0, 200))}
-                          placeholder="Address"
-                          aria-label="Customer address"
-                          autoComplete="off"
-                          className={`${inputBase} pl-10`}
-                        />
-                      </div>
-                    </div>
 
                     {typedName ? (
                       isExistingCustomer ? (
