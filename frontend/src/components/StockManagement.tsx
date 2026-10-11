@@ -21,6 +21,7 @@ import {
   ArrowDownRight,
   CheckCircle,
   XCircle,
+  RefreshCw,
 } from "lucide-react";
 
 const API_BASE = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api/stocks`;
@@ -140,6 +141,12 @@ const StockManagement: React.FC = () => {
   // delete confirm modal state
   const [deleteTarget, setDeleteTarget] = useState<StockItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // restock modal state (new stock arrived → health becomes full again)
+  const [restockTarget, setRestockTarget] = useState<StockItem | null>(null);
+  const [restockQty, setRestockQty] = useState("");
+  const [restockPrice, setRestockPrice] = useState("");
+  const [restocking, setRestocking] = useState(false);
 
   const getAuthHeaders = () => {
     let token =
@@ -305,6 +312,41 @@ const StockManagement: React.FC = () => {
       notify("error", err.response?.data?.message || "Failed to update stock");
     } finally {
       setSavingEditId(null);
+    }
+  };
+
+  const openRestock = (stock: StockItem) => {
+    setRestockTarget(stock);
+    setRestockQty("");
+    setRestockPrice(String(stock.perPiecePrice));
+  };
+
+  // New stock arrived: new opening = what is left + received, sold count starts again from 0.
+  const handleRestock = async () => {
+    if (!restaurantId || !restockTarget) return;
+    const received = restockQty === "" ? 0 : Number(restockQty);
+    const price = restockPrice === "" ? restockTarget.perPiecePrice : Number(restockPrice);
+    if (!Number.isFinite(received) || received < 0 || !Number.isFinite(price) || price < 0) {
+      notify("error", "Please enter a valid quantity and price.");
+      return;
+    }
+    const left = restockTarget.closingStock ?? restockTarget.quantity;
+    const newOpening = left + received;
+
+    setRestocking(true);
+    try {
+      await axios.put(`${API_BASE}/${restockTarget._id}`, {
+        quantity: newOpening,
+        closingStock: newOpening,
+        perPiecePrice: price,
+      }, getAuthHeaders());
+      notify("success", `"${restockTarget.stockName}" restocked. Now ${newOpening} in stock.`);
+      setRestockTarget(null);
+      await fetchStocks(restaurantId);
+    } catch (err: any) {
+      notify("error", err.response?.data?.message || "Failed to restock");
+    } finally {
+      setRestocking(false);
     }
   };
 
@@ -757,6 +799,14 @@ const StockManagement: React.FC = () => {
                             ) : (
                               <>
                                 <button
+                                  onClick={() => openRestock(stock)}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-50/60 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-2 border border-emerald-200/70 transition-all cursor-pointer shadow-sm"
+                                  title="Restock (new stock arrived)"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Restock
+                                </button>
+                                <button
                                   onClick={() => startEdit(stock)}
                                   className="inline-flex items-center gap-1 rounded-xl bg-slate-50 hover:bg-purple-50 hover:text-purple-600 text-slate-600 text-xs font-semibold p-2.5 border border-slate-200 transition-all cursor-pointer shadow-sm"
                                   title="Edit Item"
@@ -831,6 +881,84 @@ const StockManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ---------- RESTOCK MODAL ---------- */}
+      {restockTarget && (() => {
+        const left = restockTarget.closingStock ?? restockTarget.quantity;
+        const received = Number(restockQty || 0);
+        const newTotal = left + (received > 0 ? received : 0);
+        return (
+          <div
+            className="sm-fade fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[3px]"
+            onClick={() => (restocking ? null : setRestockTarget(null))}
+          >
+            <div
+              className="sm-pop w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-5 py-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                  <RefreshCw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Restock "{restockTarget.stockName}"</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">New stock arrived? Add it here. No need to delete.</p>
+                </div>
+              </div>
+              <div className="px-5 py-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Quantity received</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(e.target.value)}
+                    autoFocus
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-mono font-medium outline-none focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-600/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Per piece price</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={restockPrice}
+                    onChange={(e) => setRestockPrice(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-mono font-medium outline-none focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-600/20"
+                  />
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-600">
+                  Left now <span className="font-mono font-bold text-slate-900">{left}</span>
+                  {" + "}received <span className="font-mono font-bold text-slate-900">{received > 0 ? received : 0}</span>
+                  {" = "}<span className="font-mono font-bold text-emerald-700">{newTotal}</span>
+                  <p className="mt-1 text-[11px] text-slate-400">This becomes the new opening stock. Health goes back to full and the sold count starts from 0.</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3.5">
+                <button
+                  type="button"
+                  onClick={() => setRestockTarget(null)}
+                  disabled={restocking}
+                  className="rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-bold px-4 py-2.5 transition-all cursor-pointer disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestock}
+                  disabled={restocking}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-bold px-4 py-2.5 shadow-sm transition-all cursor-pointer"
+                >
+                  {restocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  Save restock
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ---------- TOAST ---------- */}
       {toast && (
