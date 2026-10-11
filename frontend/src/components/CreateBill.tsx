@@ -24,7 +24,19 @@ const ORDERS_URL = `${API_BASE}/api/orders`;
 const BILLS_URL = `${API_BASE}/api/bills`;
 const LOYALTY_URL = `${API_BASE}/api/loyalty`;
 
-const DEFAULT_VAT_RATE = 0; // % — editable, defaults to 0
+const FEATURES_URL = `${API_BASE}/api/features`;
+
+const DEFAULT_VAT_RATE = 0; // % — used only when Settings → Features has VAT OFF
+
+// VAT % from Settings → Features (saved on this device too, so it works offline)
+const readSavedVat = () => {
+  try {
+    const v = Number(localStorage.getItem('rmsDefaultVat'));
+    return Number.isFinite(v) && v >= 0 && v <= 100 ? v : DEFAULT_VAT_RATE;
+  } catch {
+    return DEFAULT_VAT_RATE;
+  }
+};
 
 const DISCOUNT_PRESETS = [5, 10, 15, 20];
 const VAT_PRESETS = [0, 13];
@@ -1814,7 +1826,32 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const [discountAmountInput, setDiscountAmountInput] = useState<number>(0);
   const [discountMode, setDiscountMode] = useState<'percent' | 'flat'>('percent');
 
-  const [vatRate, setVatRate] = useState<number>(DEFAULT_VAT_RATE);
+  // 🧾 Default VAT comes from Settings → Features
+  const defaultVatRef = useRef<number>(readSavedVat());
+  const [defaultVat, setDefaultVat] = useState<number>(defaultVatRef.current);
+  const [vatRate, setVatRate] = useState<number>(defaultVatRef.current);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(FEATURES_URL);
+        const json = await res.json();
+        if (!alive || !res.ok || !json?.success) return;
+        const rate = json.data?.vatEnabled ? Number(json.data.vatRate) || 0 : 0;
+        try { localStorage.setItem('rmsDefaultVat', String(rate)); } catch {}
+        // Only change the open bill if the cashier has not changed VAT by hand
+        setVatRate((cur) => (cur === defaultVatRef.current ? rate : cur));
+        defaultVatRef.current = rate;
+        setDefaultVat(rate);
+      } catch {
+        /* offline → keep the saved value */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [createdBill, setCreatedBill] = useState<any | null>(null);
 
@@ -1933,7 +1970,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setDeliveryAddress(selectedOrder?.customerAddress || '');
     // 🛵 Filled from the order (if given when the order was created) — still editable here
     setDeliveryCharge(Math.max(Number(selectedOrder?.deliveryCharge) || 0, 0));
-    setVatRate(DEFAULT_VAT_RATE);
+    setVatRate(defaultVatRef.current);
     setQrMethod(null);
     setBillToName('');
     setPendingName('');
@@ -2978,7 +3015,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                     <div className="space-y-2.5 border-t border-slate-100 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
                       <p className="text-xs font-bold text-slate-600">{lang === 'en' ? 'VAT' : 'भ्याट'}</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        {VAT_PRESETS.map((v) => (
+                        {Array.from(new Set([...VAT_PRESETS, defaultVat])).map((v) => (
                           <button
                             key={v}
                             type="button"

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, GlassWater, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, GlassWater, CheckCircle2, AlertCircle, Percent } from 'lucide-react';
 
 // =====================================================================
 // SETTINGS → FEATURES   (on / off switches for this restaurant)
@@ -9,12 +9,17 @@ const FEATURES_URL = `${API_BASE}/api/features`;
 
 interface Features {
   skipBeverageKot: boolean;
+  vatEnabled: boolean;
+  vatRate: number;
 }
+
+const FALLBACK: Features = { skipBeverageKot: false, vatEnabled: false, vatRate: 13 };
 
 export default function FeatureSettings() {
   const [features, setFeatures] = useState<Features | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [vatInput, setVatInput] = useState('13');
 
   useEffect(() => {
     (async () => {
@@ -22,17 +27,19 @@ export default function FeatureSettings() {
         const res = await fetch(FEATURES_URL);
         const json = await res.json();
         if (!res.ok || !json.success) throw new Error(json.message || 'Could not load features.');
-        setFeatures(json.data);
+        setFeatures({ ...FALLBACK, ...json.data });
+        setVatInput(String(json.data?.vatRate ?? 13));
       } catch (e: any) {
         setMessage({ type: 'err', text: e.message || 'Could not load features.' });
-        setFeatures({ skipBeverageKot: false });
+        setFeatures(FALLBACK);
       }
     })();
   }, []);
 
-  const toggle = async (key: keyof Features) => {
+  // Saves only the fields that changed
+  const save = async (patch: Partial<Features>) => {
     if (!features || saving) return;
-    const next = { ...features, [key]: !features[key] };
+    const next = { ...features, ...patch };
     setFeatures(next); // show the change straight away
     setSaving(true);
     setMessage(null);
@@ -40,11 +47,16 @@ export default function FeatureSettings() {
       const res = await fetch(FEATURES_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: next[key] }),
+        body: JSON.stringify(patch),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) throw new Error(json.message || 'Could not save.');
-      setFeatures(json.data);
+      setFeatures({ ...FALLBACK, ...json.data });
+      setVatInput(String(json.data?.vatRate ?? 13));
+      // Create Bill reads this (also works offline)
+      try {
+        localStorage.setItem('rmsDefaultVat', String(json.data?.vatEnabled ? json.data.vatRate : 0));
+      } catch {}
       setMessage({ type: 'ok', text: 'Saved.' });
     } catch (e: any) {
       setFeatures(features); // undo
@@ -52,6 +64,17 @@ export default function FeatureSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const toggle = (key: 'skipBeverageKot' | 'vatEnabled') => save({ [key]: !features?.[key] });
+
+  const saveVatRate = () => {
+    const rate = Number(vatInput);
+    if (vatInput.trim() === '' || !Number.isFinite(rate) || rate < 0 || rate > 100) {
+      setMessage({ type: 'err', text: 'VAT must be between 0 and 100 %.' });
+      return;
+    }
+    save({ vatRate: rate });
   };
 
   if (!features) {
@@ -72,6 +95,41 @@ export default function FeatureSettings() {
         disabled={saving}
         onToggle={() => toggle('skipBeverageKot')}
       />
+
+      <FeatureRow
+        icon={Percent}
+        title="Add VAT to every bill"
+        description="When ON: Create Bill adds this VAT % automatically to every new bill. The cashier can still change it on one bill if needed. VAT is shown on the printed bill, Pending Bills, Delivery Bills and the Dashboard."
+        on={features.vatEnabled}
+        disabled={saving}
+        onToggle={() => toggle('vatEnabled')}
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="vat-rate" className="text-xs font-bold text-slate-600">VAT %</label>
+          <div className="relative w-24">
+            <input
+              id="vat-rate"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step="0.01"
+              value={vatInput}
+              onChange={(e) => setVatInput(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-7 text-sm font-mono outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+            />
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+          </div>
+          <button
+            type="button"
+            onClick={saveVatRate}
+            disabled={saving || Number(vatInput) === features.vatRate}
+            className="cursor-pointer rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Save VAT %
+          </button>
+        </div>
+      </FeatureRow>
 
       {message && (
         <p
@@ -94,6 +152,7 @@ function FeatureRow({
   on,
   disabled,
   onToggle,
+  children,
 }: {
   icon: React.ElementType;
   title: string;
@@ -101,6 +160,7 @@ function FeatureRow({
   on: boolean;
   disabled: boolean;
   onToggle: () => void;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -113,6 +173,7 @@ function FeatureRow({
         <p className={`mt-2 text-[11px] font-bold uppercase tracking-wider ${on ? 'text-purple-700' : 'text-slate-400'}`}>
           {on ? 'ON' : 'OFF'}
         </p>
+        {children}
       </div>
       <button
         type="button"
