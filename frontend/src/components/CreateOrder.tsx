@@ -271,6 +271,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   const [orderNote, setOrderNote] = useState('');
     // 🛵 Optional delivery charge (Create Bill fills it in automatically, still editable there)
   const [deliveryChargeInput, setDeliveryChargeInput] = useState('');
+  // 💳 Paid already? '' = Not paid (default)
+  const [paidVia, setPaidVia] = useState<'' | 'Cash' | 'eSewa' | 'Khalti' | 'Fonepay'>('');
 
   // UI
   const [errorMessage, setErrorMessage] = useState('');
@@ -643,6 +645,7 @@ pickCustomer(customerSuggestions[highlight]);
           })),
           totalAmount: cartTotal, // food only — the delivery charge is saved separately
           deliveryCharge: orderDeliveryCharge,
+          paidVia,
           orderStatus: 'Pending',
           paymentStatus: 'Unpaid',
         }),
@@ -663,6 +666,7 @@ pickCustomer(customerSuggestions[highlight]);
         setTableNumber('');
         setOrderNote('');
         setDeliveryChargeInput('');
+        setPaidVia('');
         switchedByUser.current = false;
         setOrderBy('table');
         setShowConfirmModal(false);
@@ -1144,6 +1148,33 @@ pickCustomer(customerSuggestions[highlight]);
                     +{v}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* 💳 Paid already? (shown in Create Bill) */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold text-slate-600">Payment</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {(['', 'Cash', 'eSewa', 'Khalti', 'Fonepay'] as const).map((m) => {
+                  const active = paidVia === m;
+                  return (
+                    <button
+                      key={m || 'none'}
+                      type="button"
+                      onClick={() => setPaidVia(m)}
+                      aria-pressed={active}
+                      className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                        active
+                          ? m === ''
+                            ? 'border-amber-300 bg-amber-50 text-amber-700'
+                            : 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:text-purple-700'
+                      }`}
+                    >
+                      {m === '' ? 'Not paid' : `Paid · ${m}`}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

@@ -93,6 +93,9 @@ const str = (v) => (typeof v === "string" ? v.trim() : "");
 // ==========================
 const cleanText = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const cleanPhone = (v) => (typeof v === "string" ? v.replace(/[^0-9+\-\s]/g, "").trim().slice(0, 20) : "");
+// 💳 "Paid when ordered" — only these values are allowed, anything else = "" (Not paid)
+const PAID_VIA = ["Cash", "eSewa", "Khalti", "Fonepay"];
+const cleanPaidVia = (v) => (PAID_VIA.includes(v) ? v : "");
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // 1. SAVE: new customer, or update phone/address if the same name already exists
@@ -692,6 +695,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             customerPhone: cleanPhone(formData.customerPhone),
             customerAddress: cleanText(formData.customerAddress, 200),
             deliveryCharge: Math.min(Math.max(parseNum(getValue(formData.deliveryCharge, 0)), 0), 100000),
+            paidVia: cleanPaidVia(formData.paidVia),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             orderNote: getValue(formData.orderNote, ""),
             items: orderItems,
@@ -732,7 +736,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
             customerName: item.customerName,
             customerPhone: item.customerPhone || "",
             customerAddress: item.customerAddress || "",
-                        deliveryCharge: item.deliveryCharge || 0,
+            deliveryCharge: item.deliveryCharge || 0,
+            paidVia: item.paidVia || "",
             autoServed: !!item.autoServed,
             fromOnline: !!item.fromOnline,
             skipKitchen: !!item.skipKitchen,
@@ -779,6 +784,7 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
         const updatedFields = {};
                 if (updateData.customerPhone !== undefined) updatedFields.customerPhone = cleanPhone(updateData.customerPhone);
         if (updateData.deliveryCharge !== undefined) updatedFields.deliveryCharge = Math.min(Math.max(parseNum(updateData.deliveryCharge), 0), 100000);
+        if (updateData.paidVia !== undefined) updatedFields.paidVia = cleanPaidVia(updateData.paidVia);        
         if (updateData.customerName !== undefined) updatedFields.customerName = updateData.customerName;
         if (updateData.tableNumber !== undefined) updatedFields.tableNumber = updateData.tableNumber;
         if (updateData.orderNote !== undefined) updatedFields.orderNote = updateData.orderNote;

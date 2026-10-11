@@ -76,6 +76,7 @@ interface Order {
   customerPhone?: string;
   customerAddress?: string;
   deliveryCharge?: number;
+  paidVia?: string; // 💳 '' = not paid, else Cash / eSewa / Khalti / Fonepay (chosen in Create Order)
   fromOnline?: boolean; // 🛵 order from the online ordering website
   tableNumber: string;
   orderNote?: string;
@@ -3106,6 +3107,19 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       </span>
                     )}
                   </div>
+
+                  {/* 💳 Paid or not — chosen when the order was taken (Create Order) */}
+                  {selectedOrder.paidVia ? (
+                    <div className="flex items-center gap-2.5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                      {lang === 'en' ? `Paid from ${selectedOrder.paidVia}` : `${selectedOrder.paidVia} बाट भुक्तानी भयो`}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 ring-1 ring-inset ring-amber-200">
+                      <Clock className="h-5 w-5 shrink-0 text-amber-600" />
+                      {lang === 'en' ? 'Not paid' : 'भुक्तानी भएको छैन'}
+                    </div>
+                  )}
 
                  {selectedMethods.size === 0 && !markAsPending && !markAsDelivery && (
                     <div className="flex items-start gap-2.5 rounded-2xl bg-purple-50/70 px-4 py-3 text-xs text-purple-900 ring-1 ring-inset ring-purple-100">

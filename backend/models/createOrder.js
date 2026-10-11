@@ -34,7 +34,9 @@ const createOrderSchema = mongoose.Schema({
     },
         customerPhone: { type: String, default: "" },
     customerAddress: { type: String, default: "" },
-        deliveryCharge: { type: Number, default: 0, min: 0 },
+    deliveryCharge: { type: Number, default: 0, min: 0 },
+    // 💳 Paid already when the order was taken? "" = Not paid
+    paidVia: { type: String, enum: ["", "Cash", "eSewa", "Khalti", "Fonepay"], default: "" },
     // true = only drinks and the "no beverage KOT" feature was ON → sent straight to billing, not the kitchen
     autoServed: { type: Boolean, default: false },
     // 🛵 Online (website) orders
