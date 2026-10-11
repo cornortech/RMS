@@ -133,6 +133,8 @@ const StockManagement: React.FC = () => {
   const [editQuantity, setEditQuantity] = useState("");
   const [editPerPiecePrice, setEditPerPiecePrice] = useState("");
   const [editSaleQuantity, setEditSaleQuantity] = useState("");
+    // What was saved BEFORE this edit, so earlier sales are not lost
+  const [editBase, setEditBase] = useState<{ opening: number; closing: number }>({ opening: 0, closing: 0 });
   const [savingEditId, setSavingEditId] = useState<string | null>(null);
 
   // delete confirm modal state
@@ -260,6 +262,7 @@ const StockManagement: React.FC = () => {
     setEditQuantity(String(stock.quantity));
     setEditPerPiecePrice(String(stock.perPiecePrice));
     setEditSaleQuantity("");
+    setEditBase({ opening: stock.quantity, closing: stock.closingStock ?? stock.quantity });
   };
 
   const cancelEdit = () => {
@@ -279,7 +282,9 @@ const StockManagement: React.FC = () => {
 
     const openingQty = Number(editQuantity);
     const saleQty = editSaleQuantity !== "" ? Number(editSaleQuantity) : 0;
-    const calculatedClosingStock = Math.max(0, openingQty - saleQty);
+    // Closing = what was left before + any change to the opening stock − the NEW sale.
+    // (Before: closing = opening − sale, so every edit "forgot" the earlier sales.)
+    const calculatedClosingStock = Math.max(0, editBase.closing + (openingQty - editBase.opening) - saleQty);
     const price = Number(editPerPiecePrice);
     const calculatedTotalPrice = calculatedClosingStock * price;
 
@@ -600,7 +605,7 @@ const StockManagement: React.FC = () => {
                   <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-500">
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Stock Name</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Opening Stock</th>
-                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Sale Qty (Input)</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Sold / New sale</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Stock Health</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Per Piece</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider">Total Price</th>
@@ -614,7 +619,10 @@ const StockManagement: React.FC = () => {
 
                     const liveOpening = isEditing ? Number(editQuantity || 0) : stock.quantity;
                     const liveSale = isEditing ? Number(editSaleQuantity || 0) : 0;
-                    const liveClosing = isEditing ? Math.max(0, liveOpening - liveSale) : (stock.closingStock ?? stock.quantity);
+                    const liveClosing = isEditing
+                      ? Math.max(0, editBase.closing + (liveOpening - editBase.opening) - liveSale)
+                      : (stock.closingStock ?? stock.quantity);
+                    const soldSoFar = Math.max(0, stock.quantity - (stock.closingStock ?? stock.quantity));
                     const livePrice = isEditing ? Number(editPerPiecePrice || 0) : stock.perPiecePrice;
                     const liveTotalPrice = liveClosing * livePrice;
 
@@ -665,16 +673,20 @@ const StockManagement: React.FC = () => {
 
                         <td className="px-6 py-4">
                           {isEditing ? (
-                            <input
-                              type="number"
-                              placeholder="0"
-                              value={editSaleQuantity}
-                              onChange={(e) => setEditSaleQuantity(e.target.value)}
-                              min="0"
-                              className="w-24 rounded-lg border border-purple-300 bg-purple-50/30 px-3 py-2 text-sm font-mono outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                placeholder="0"
+                                value={editSaleQuantity}
+                                onChange={(e) => setEditSaleQuantity(e.target.value)}
+                                min="0"
+                                aria-label="New sale quantity"
+                                className="w-24 rounded-lg border border-purple-300 bg-purple-50/30 px-3 py-2 text-sm font-mono outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+                              />
+                              <p className="mt-1 text-[10px] font-semibold text-slate-400">Sold before: {soldSoFar}</p>
+                            </div>
                           ) : (
-                            <span className="font-mono text-slate-400">-</span>
+                            <span className="font-mono text-slate-500">{soldSoFar > 0 ? soldSoFar : '-'}</span>
                           )}
                         </td>
 

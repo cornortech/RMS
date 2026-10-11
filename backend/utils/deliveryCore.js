@@ -248,13 +248,20 @@ async function refreshRiderStatus(restaurantId, riderId) {
 // ---------------------------------------------------------------------
 const kitchenTable = (o) => `Delivery ${o.orderNo}`;
 
-async function createKitchenTicket(o) {
+// skipKitchen = true when "Send to kitchen" is OFF: the order is still saved (Orders page,
+// Create Bill) but it does not show on the Kitchen Display.
+async function createKitchenTicket(o, { skipKitchen = false } = {}) {
   try {
     const exists = await Order.exists({ restaurantId: o.restaurantId, tableNumber: kitchenTable(o) });
     if (exists) return;
     await Order.create({
       restaurantId: o.restaurantId,
       customerName: `${o.customer.name} (Online)`,
+      customerPhone: o.customer.phone || "",
+      customerAddress: [o.customer.address, o.customer.landmark].filter(Boolean).join(", "),
+      deliveryCharge: o.deliveryCharge || 0,
+      fromOnline: true,
+      skipKitchen,
       tableNumber: kitchenTable(o),
       orderNote: o.orderNote || "",
       items: o.items.map((i) => ({
@@ -264,8 +271,9 @@ async function createKitchenTicket(o) {
         quantity: i.quantity,
       })),
       totalAmount: o.totalAmount,
-      orderStatus: "Pending",
-      paymentStatus: o.paymentStatus === "Paid" ? "Paid" : "Unpaid",
+      orderStatus: KITCHEN_STATUS[o.status] && o.status !== "Cancelled" ? KITCHEN_STATUS[o.status] : "Pending",
+      // "Unpaid" = no bill made yet. The bill is made in Create Bill once the order is Ready.
+      paymentStatus: "Unpaid",
     });
   } catch (e) {
     console.error("⚠️ Could not create kitchen ticket:", e.message);
@@ -278,7 +286,19 @@ async function syncKitchenTicket(o) {
   try {
     const next = KITCHEN_STATUS[o.status];
     if (!next) return;
-    await Order.updateMany({ restaurantId: o.restaurantId, tableNumber: kitchenTable(o) }, { $set: { orderStatus: next } });
+    // No order saved yet (e.g. accepted before this update) → save it now so it can be billed
+    if (next !== "Cancelled") {
+      const exists = await Order.exists({ restaurantId: o.restaurantId, tableNumber: kitchenTable(o) });
+      if (!exists) {
+        const settings = await getSettings(o.restaurantId);
+        return createKitchenTicket(o, { skipKitchen: settings.sendToKitchen === false });
+      }
+    }
+    // Never move a billed / finished order backwards (e.g. Completed → Ready)
+    await Order.updateMany(
+      { restaurantId: o.restaurantId, tableNumber: kitchenTable(o), orderStatus: mongoose.trusted({ $ne: "Completed" }) },
+      { $set: { orderStatus: next } }
+    );
   } catch (e) {
     console.error("⚠️ Could not sync kitchen ticket:", e.message);
   }

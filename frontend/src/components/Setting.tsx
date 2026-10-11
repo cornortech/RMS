@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import QrUploader from "./QrUploader";
 import TableQrManager from "./TableQrManager";
    import LoyaltyManager from "./LoyaltyManager";
+   import FeatureSettings from "./FeatureSettings";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "https://rms-elhj.onrender.com").trim().replace(/\/+$/, '');
 
@@ -13,6 +14,7 @@ const TABS = [
   { key: "qrManage", label: "Payment QR Manage", icon: "🔳" },
   { key: "loyaltyManage", label: "Manage Loyalty", icon: "⭐" },
     { key: "tableQr", label: "Table QR", icon: "🪑" },
+  { key: "features", label: "Features", icon: "⚙️" },
 ];
 
 export default function RESTAURANTSettings() {
@@ -528,6 +530,16 @@ export default function RESTAURANTSettings() {
     <TableQrManager />
   </div>
 )}
+
+            {activeTab === "features" && (
+              <div role="tabpanel">
+                <div style={styles.sectionHeader}>
+                  <h2 style={styles.sectionTitle}>Features</h2>
+                  <p style={styles.sectionDesc}>Turn optional features on or off for your restaurant.</p>
+                </div>
+                <FeatureSettings />
+              </div>
+            )}
 
               {activeTab === "loyaltyManage" && (
               <div role="tabpanel">

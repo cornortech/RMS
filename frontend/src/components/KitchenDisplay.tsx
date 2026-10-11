@@ -21,6 +21,8 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')).trim().replace(/\/+$/, '');
 const ORDERS_URL = `${API_BASE}/api/orders`;
+const MENU_URL = `${API_BASE}/api/menu`;
+const FEATURES_URL = `${API_BASE}/api/features`;
 
 const getLoggedInRestaurantId = () => {
   try {
@@ -61,6 +63,9 @@ interface Order {
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
+  // What the kitchen sees/prints (beverages removed when that feature is ON). `items` stays complete.
+  kitchenItems?: OrderItem[];
+  skipKitchen?: boolean; // online order with "Send to kitchen" OFF
   totalAmount: number;
   orderStatus: OrderStatus;
   paymentStatus: string;
@@ -193,7 +198,7 @@ function formatClockDate(d: Date): string {
 // the item list actually changed between polls (added items, changed
 // quantities, etc), independent of whatever the backend does to updatedAt.
 function itemsSignature(order: Order): string {
-  return (order.items || [])
+  return (order.kitchenItems ?? order.items ?? [])
     .map((i) => `${i.itemName}|${i.quantity}|${i.itemPrice}`)
     .join('~');
 }
@@ -259,7 +264,7 @@ function escapeHtml(str: string): string {
 // the original was fired) so the kitchen can tell it apart from a fresh
 // ticket at a glance.
 function buildTicketHtml(order: Order, isUpdate: boolean = false): string {
-  const itemRows = (order.items || [])
+  const itemRows = (order.kitchenItems ?? order.items ?? [])
     .map(
       (item) => `
         <tr>
@@ -479,7 +484,7 @@ function TicketCard({
   const age = minutesSince(order.updatedAt || order.createdAt, now);
   const isHot = age >= CRITICAL_AFTER_MIN;
   const isWarm = age >= WARN_AFTER_MIN && !isHot;
-  const itemCount = (order.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0);
+  const itemCount = (order.kitchenItems ?? order.items ?? []).reduce((sum, i) => sum + (i.quantity || 0), 0);
 
   return (
     <div
@@ -541,7 +546,7 @@ function TicketCard({
 
         {/* Items — the part that gets scanned fastest, so it's the biggest text on the card */}
         <div className="flex-1 space-y-1.5">
-          {(order.items || []).map((item, idx) => (
+          {(order.kitchenItems ?? order.items ?? []).map((item, idx) => (
             <div key={idx} className="flex items-baseline gap-2">
               <span className="font-mono text-base font-bold text-violet-600 shrink-0 w-6 text-right">
                 {item.quantity}×
@@ -686,6 +691,31 @@ export default function KitchenDisplay() {
 
   const knownIds = useRef<Set<string>>(new Set());
   const isFirstLoad = useRef(true);
+  
+  // 🥤 "Don't send beverages to the kitchen" (Settings → Features). Re-checked at most once a minute.
+  const beverageFilter = useRef<{ at: number; isBeverage: ((name: string) => boolean) | null }>({ at: 0, isBeverage: null });
+  const getBeverageFilter = async () => {
+    if (Date.now() - beverageFilter.current.at < 60000) return beverageFilter.current.isBeverage;
+    try {
+      const fRes = await fetch(FEATURES_URL);
+      const f = await fRes.json();
+      let isBeverage: ((name: string) => boolean) | null = null;
+      if (fRes.ok && f?.data?.skipBeverageKot) {
+        const mRes = await fetch(restaurantId ? `${MENU_URL}?restaurantId=${encodeURIComponent(restaurantId)}` : MENU_URL);
+        const m = await mRes.json();
+        const names = new Set(
+          (m?.data || [])
+            .filter((x: any) => x.category === 'Beverage')
+            .map((x: any) => String(x.itemName || '').trim().toLowerCase())
+        );
+        isBeverage = (name: string) => names.has(String(name || '').split(' + ')[0].trim().toLowerCase());
+      }
+      beverageFilter.current = { at: Date.now(), isBeverage };
+    } catch {
+      /* keep the last known setting */
+    }
+    return beverageFilter.current.isBeverage;
+  };
   // Separate from knownIds — tracks which order _ids have already been sent
   // to the printer, so a ticket is never auto-printed twice across polls
   // even if it lingers in the Pending lane for several fetch cycles.
@@ -743,9 +773,15 @@ export default function KitchenDisplay() {
         throw new Error(result.message || 'Failed to load orders.');
       }
 
-      const kitchenOrders: Order[] = (result.data || []).filter((o: Order) =>
-        ['Pending', 'Preparing', 'Ready'].includes(o.orderStatus)
-      );
+      const isBeverage = await getBeverageFilter();
+      const kitchenOrders: Order[] = (result.data || [])
+        .filter((o: Order) => ['Pending', 'Preparing', 'Ready'].includes(o.orderStatus) && !o.skipKitchen)
+        .map((o: Order) => ({
+          ...o,
+          kitchenItems: isBeverage ? (o.items || []).filter((i) => !isBeverage(i.itemName)) : o.items || [],
+        }))
+        // Only beverages left → nothing for the kitchen: don't show it, don't print a KOT
+        .filter((o: Order) => (o.kitchenItems || []).length > 0);
 
       if (!isFirstLoad.current) {
         // Brand-new tickets that have never been seen before at all.

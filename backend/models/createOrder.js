@@ -35,6 +35,11 @@ const createOrderSchema = mongoose.Schema({
         customerPhone: { type: String, default: "" },
     customerAddress: { type: String, default: "" },
         deliveryCharge: { type: Number, default: 0, min: 0 },
+    // true = only drinks and the "no beverage KOT" feature was ON → sent straight to billing, not the kitchen
+    autoServed: { type: Boolean, default: false },
+    // 🛵 Online (website) orders
+    fromOnline: { type: Boolean, default: false }, // can be billed in Create Bill once Ready
+    skipKitchen: { type: Boolean, default: false }, // "Send to kitchen" is OFF → hidden from Kitchen Display        
     tableNumber: {
         type: String,
     },

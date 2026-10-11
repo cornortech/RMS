@@ -145,7 +145,9 @@ router.patch("/orders/:id/status", async (req, res) => {
     await order.save();
 
     const settings = await core.getSettings(rid(req));
-    if (to === "Confirmed" && settings.sendToKitchen !== false) await core.createKitchenTicket(order);
+    // The order is ALWAYS saved (Orders page + Create Bill). "Send to kitchen" OFF only hides it from the Kitchen Display.
+    const skipKitchen = settings.sendToKitchen === false;
+    if (to === "Confirmed") await core.createKitchenTicket(order, { skipKitchen });
     else await core.syncKitchenTicket(order);
 
     if (oldRider) await core.refreshRiderStatus(rid(req), oldRider);

@@ -64,6 +64,7 @@ interface Order {
   customerPhone?: string;
   customerAddress?: string;
   deliveryCharge?: number;
+  fromOnline?: boolean; // 🛵 order from the online ordering website
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
@@ -1864,14 +1865,13 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       if (!res.ok || !result.success) {
         throw new Error(result.message || 'Failed to load orders.');
       }
-      const served: Order[] = (result.data || []).filter(
-             (o: Order) =>
-          o.orderStatus === 'Served' &&
-          o.paymentStatus !== 'Paid' &&
-          o.paymentStatus !== 'Pending' &&
-          // Online delivery orders are paid through the Delivery page, never billed here
-          !String((o as any).tableNumber || '').startsWith('Delivery DLV-')
-      );
+      const served: Order[] = (result.data || []).filter((o: Order) => {
+        if (o.paymentStatus === 'Paid' || o.paymentStatus === 'Pending') return false; // already billed
+        const isOnline = String(o.tableNumber || '').startsWith('Delivery DLV-');
+        // 🛵 Online orders: can be billed once the kitchen marks them Ready (or after delivery)
+        if (isOnline) return !!o.fromOnline && (o.orderStatus === 'Ready' || o.orderStatus === 'Completed');
+        return o.orderStatus === 'Served';
+      });
       setServedOrders(served);
     } catch (err: any) {
       setError(err.message || 'Could not connect to the server.');

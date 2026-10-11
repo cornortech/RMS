@@ -26,6 +26,17 @@ const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription")
 const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
 const { deleteImage } = require("./utils/cloudinary");
+const RestaurantFeatures = require("./models/restaurantFeatures");
+
+// 🥤 "No beverage in KOT" feature. Returns a function that says if an item is a beverage,
+// or null when the feature is OFF. Items are matched to the Menu by name (category "Beverage").
+async function beverageChecker(restaurantId) {
+    const f = await RestaurantFeatures.findOne({ restaurantId }).lean();
+    if (!f?.skipBeverageKot) return null;
+    const drinks = await Menu.find({ restaurantId, category: "Beverage" }).select("itemName").lean();
+    const names = new Set(drinks.map((d) => String(d.itemName || "").trim().toLowerCase()));
+    return (itemName) => names.has(String(itemName || "").split(" + ")[0].trim().toLowerCase());
+}
 
 
 const app = express();
@@ -386,6 +397,7 @@ guard("/api/loyalty", { POST: [M, C], PUT: [M, C], PATCH: [M, C], DELETE: [M] })
 
 app.use("/api/loyalty", requireAuth, loyaltyRoutes);
 app.use('/api/qr', requireAuth, require('./routes/qr'));
+app.use("/api/features", require("./routes/features")); // ⚙️ Settings → Features (on/off switches)
 app.use("/api/menu", require("./routes/menuImage")); // 📷 menu photos (Cloudinary)
 
 app.use("/api/table-qr", require("./routes/tableQr"));
@@ -663,6 +675,16 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             }
         }
 
+        // 🥤 Only drinks + feature ON → no kitchen ticket: goes straight to Create Bill
+        const orderItems = (formData.items || []).map(i => ({
+            itemName: i.itemName || "Unknown Item",
+            description: i.description || "",
+            itemPrice: Number(i.itemPrice) || 0,
+            quantity: Number(i.quantity) || 1,
+        }));
+        const isBeverage = await beverageChecker(restaurantId);
+        const onlyDrinks = !!isBeverage && orderItems.length > 0 && orderItems.every((i) => isBeverage(i.itemName));
+
         const newOrder = await Order.create({
             restaurantId: restaurantId,
             staffId: staffId,   // the staff "id" like "111"
@@ -672,14 +694,10 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             deliveryCharge: Math.min(Math.max(parseNum(getValue(formData.deliveryCharge, 0)), 0), 100000),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             orderNote: getValue(formData.orderNote, ""),
-            items: (formData.items || []).map(i => ({
-                itemName: i.itemName || "Unknown Item",
-                description: i.description || "",
-                itemPrice: Number(i.itemPrice) || 0,
-                quantity: Number(i.quantity) || 1,
-            })),
+            items: orderItems,
             totalAmount: parseNum(getValue(formData.totalAmount, 0)),
-            orderStatus: getValue(formData.orderStatus, "Pending"),
+            orderStatus: onlyDrinks ? "Served" : getValue(formData.orderStatus, "Pending"),
+            autoServed: onlyDrinks,
             paymentStatus: getValue(formData.paymentStatus, "Unpaid")
         });
 
@@ -715,6 +733,9 @@ app.get("/api/orders", requireAuth, async (req, res) => {
             customerPhone: item.customerPhone || "",
             customerAddress: item.customerAddress || "",
                         deliveryCharge: item.deliveryCharge || 0,
+            autoServed: !!item.autoServed,
+            fromOnline: !!item.fromOnline,
+            skipKitchen: !!item.skipKitchen,
             tableNumber: item.tableNumber,
             orderNote: item.orderNote,
             items: item.items,
@@ -776,6 +797,19 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
         }
 
         const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
+
+        // 🥤 A drinks-only order (sent straight to billing) got FOOD added → send it to the kitchen now
+        if (updatedFields.items) {
+            const existing = await Order.findOne(query).select("autoServed orderStatus restaurantId").lean();
+            if (existing?.autoServed && existing.orderStatus === "Served") {
+                const isBeverage = await beverageChecker(existing.restaurantId);
+                const hasFood = !isBeverage || updatedFields.items.some((i) => !isBeverage(i.itemName));
+                if (hasFood) {
+                    updatedFields.orderStatus = "Pending";
+                    updatedFields.autoServed = false;
+                }
+            }
+        }
 
         const updatedItem = await Order.findOneAndUpdate(
             query,
@@ -1275,14 +1309,16 @@ app.put("/api/stocks/:id", requireAuth, async (req, res) => {
             ? { _id: req.params.id } 
             : { _id: req.params.id, restaurantId: req.auth.restaurantId };
 
-        if (updateData.quantity !== undefined || updateData.perPiecePrice !== undefined) {
+        if (updateData.quantity !== undefined || updateData.perPiecePrice !== undefined || updateData.closingStock !== undefined) {
             const existingStock = await Stock.findOne(query);
             if (!existingStock) {
                 return res.status(404).json({ success: false, message: "Stock item not found" });
             }
             const q = updateData.quantity !== undefined ? parseNum(updateData.quantity) : existingStock.quantity;
             const p = updateData.perPiecePrice !== undefined ? parseNum(updateData.perPiecePrice) : existingStock.perPiecePrice;
-            updateData.totalPrice = q * p;
+            // Value of what is LEFT (closing stock), same as the Stock page shows
+            const c = updateData.closingStock !== undefined ? parseNum(updateData.closingStock) : (existingStock.closingStock ?? q);
+            updateData.totalPrice = c * p;
         }
 
         const updatedStock = await Stock.findOneAndUpdate(
