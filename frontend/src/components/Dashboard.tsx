@@ -378,6 +378,13 @@ const orderValue = (o: RawOrder) => {
 const localKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+
+// 🕔 Business day starts at 5 AM (not midnight). Sales made between 12 AM and 5 AM
+// still count for the previous day, so late-night sales stay in the same "day".
+// Change this number to move the reset time (e.g. 4 = 4 AM, 0 = midnight).
+const DAY_START_HOUR = 5;
+const bizKey = (d: Date) => localKey(new Date(d.getTime() - DAY_START_HOUR * 3600000));
+
 const formatNPR = (n: number) =>
   `NPR ${n.toLocaleString('en-NP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -1451,7 +1458,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     const map = new Map<string, { total: number; count: number; dine: number; delivery: number }>();
     invoices.forEach((inv) => {
       if (isDeliveryBill(inv)) return;
-      const key = localKey(new Date(inv.date));
+      const key = bizKey(new Date(inv.date));
       const cur = map.get(key) || { total: 0, count: 0, dine: 0, delivery: 0 };
       cur.total += inv.grandTotal;
       cur.dine += inv.grandTotal;
@@ -1460,7 +1467,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     });
     // 🛵 add delivery money to the same day
     deliveryList.forEach((d) => {
-      const key = localKey(new Date(d.at));
+      const key = bizKey(new Date(d.at));
       const cur = map.get(key) || { total: 0, count: 0, dine: 0, delivery: 0 };
       cur.total += d.total;
       cur.delivery += d.total;
@@ -1469,8 +1476,9 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     return map;
   }, [invoices, deliveryList]);
 
+  // "Today" = the current business day (before 5 AM it is still yesterday)
   const startOfToday = () => {
-    const d = new Date();
+    const d = new Date(Date.now() - DAY_START_HOUR * 3600000);
     d.setHours(0, 0, 0, 0);
     return d;
   };
@@ -1590,12 +1598,12 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     const firstKey = series[0]?.key || '';
     const map = new Map<string, number>();
     invoices.forEach((inv) => {
-      if (!isDeliveryBill(inv) && localKey(new Date(inv.date)) >= firstKey) {
+      if (!isDeliveryBill(inv) && bizKey(new Date(inv.date)) >= firstKey) {
         map.set(inv.paymentMethod, (map.get(inv.paymentMethod) || 0) + inv.grandTotal);
       }
     });
     deliveryList.forEach((d) => {
-      if (localKey(new Date(d.at)) >= firstKey) {
+      if (bizKey(new Date(d.at)) >= firstKey) {
         const label = d.method === 'Online' ? 'Delivery (Online)' : 'Delivery (COD)';
         map.set(label, (map.get(label) || 0) + d.total);
       }
