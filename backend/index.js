@@ -669,6 +669,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             customerName: getValue(formData.customerName, "Guest"),
             customerPhone: cleanPhone(formData.customerPhone),
             customerAddress: cleanText(formData.customerAddress, 200),
+            deliveryCharge: Math.min(Math.max(parseNum(getValue(formData.deliveryCharge, 0)), 0), 100000),
             tableNumber: getValue(formData.tableNumber, "N/A"),
             orderNote: getValue(formData.orderNote, ""),
             items: (formData.items || []).map(i => ({
@@ -713,6 +714,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
             customerName: item.customerName,
             customerPhone: item.customerPhone || "",
             customerAddress: item.customerAddress || "",
+                        deliveryCharge: item.deliveryCharge || 0,
             tableNumber: item.tableNumber,
             orderNote: item.orderNote,
             items: item.items,
@@ -755,7 +757,7 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
 
         const updatedFields = {};
                 if (updateData.customerPhone !== undefined) updatedFields.customerPhone = cleanPhone(updateData.customerPhone);
-        if (updateData.customerAddress !== undefined) updatedFields.customerAddress = cleanText(updateData.customerAddress, 200);
+        if (updateData.deliveryCharge !== undefined) updatedFields.deliveryCharge = Math.min(Math.max(parseNum(updateData.deliveryCharge), 0), 100000);
         if (updateData.customerName !== undefined) updatedFields.customerName = updateData.customerName;
         if (updateData.tableNumber !== undefined) updatedFields.tableNumber = updateData.tableNumber;
         if (updateData.orderNote !== undefined) updatedFields.orderNote = updateData.orderNote;

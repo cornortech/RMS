@@ -2138,6 +2138,37 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
     setReceiptLoyalty(null);
   };
 
+    // 🛵 Delivery Bills → move the selected delivery bill(s) to Pending Bills (pay later)
+  const [movingToPending, setMovingToPending] = useState(false);
+  const moveToPending = async () => {
+    if (!selectedGroup || movingToPending) return;
+    const ok = window.confirm(
+      lang === 'en'
+        ? `Move this bill (NPR ${money(selectedGroup.grandTotal)}) to Pending Bills?`
+        : `यो बिल (NPR ${money(selectedGroup.grandTotal)}) बाँकी बिलमा सार्ने?`
+    );
+    if (!ok) return;
+    setMovingToPending(true);
+    setError('');
+    try {
+      for (const id of selectedGroup.billIds) {
+        const res = await fetch(`${BILLS_URL}/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentMethod: 'Pending' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.success === false) throw new Error(data?.message || 'Could not move the bill to Pending.');
+      }
+      setSelectedKey(null);
+      await fetchBills();
+    } catch (err: any) {
+      setError(err.message || 'Could not move the bill to Pending.');
+    } finally {
+      setMovingToPending(false);
+    }
+  };
+
   // Escape: close the top-most layer first
   useEffect(() => {
     if (!selectedGroup && !printGroup) return;
@@ -2935,6 +2966,19 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
                       onRemove={removeLoyalty}
                     />
                   </div>
+
+                  {/* 🛵 Delivery Bills only: move to Pending Bills */}
+                  {isDeliveryMode && (
+                    <button
+                      type="button"
+                      onClick={moveToPending}
+                      disabled={movingToPending || submitting}
+                      className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-3 text-sm font-bold text-amber-800 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS}`}
+                    >
+                      {movingToPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                      {lang === 'en' ? 'Move to Pending Bills (pay later)' : 'बाँकी बिलमा सार्नुहोस् (पछि तिर्ने)'}
+                    </button>
+                  )}
 
                   {/* Mobile print button */}
                   <button

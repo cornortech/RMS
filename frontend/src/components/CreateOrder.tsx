@@ -25,6 +25,7 @@ import {
   History,
   Phone,
   MapPin,
+  Bike,
 } from 'lucide-react';
 import MenuImage from './MenuImage';
 
@@ -268,6 +269,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   const [tableNumber, setTableNumber] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orderNote, setOrderNote] = useState('');
+    // 🛵 Optional delivery charge (Create Bill fills it in automatically, still editable there)
+  const [deliveryChargeInput, setDeliveryChargeInput] = useState('');
 
   // UI
   const [errorMessage, setErrorMessage] = useState('');
@@ -470,6 +473,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   }, [cart]);
 
   const cartTotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+    const orderDeliveryCharge = Math.min(Math.max(Number(deliveryChargeInput) || 0, 0), 100000);
+  const totalWithDelivery = cartTotal + orderDeliveryCharge;
   const totalItemsCount = cart.reduce((sum, l) => sum + l.quantity, 0);
 
   // Only ONE of table / name is needed, depending on the chosen mode
@@ -636,7 +641,8 @@ pickCustomer(customerSuggestions[highlight]);
             itemPrice: line.unitPrice,
             quantity: line.quantity,
           })),
-          totalAmount: cartTotal,
+          totalAmount: cartTotal, // food only — the delivery charge is saved separately
+          deliveryCharge: orderDeliveryCharge,
           orderStatus: 'Pending',
           paymentStatus: 'Unpaid',
         }),
@@ -656,6 +662,7 @@ pickCustomer(customerSuggestions[highlight]);
         setCustomerAddress('');
         setTableNumber('');
         setOrderNote('');
+        setDeliveryChargeInput('');
         switchedByUser.current = false;
         setOrderBy('table');
         setShowConfirmModal(false);
@@ -1102,12 +1109,62 @@ pickCustomer(customerSuggestions[highlight]);
               </div>
             </div>
 
+            {/* 🛵 Delivery charge (optional) */}
+            <div className="space-y-1.5">
+              <label htmlFor="co-delivery" className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                <Bike className="h-3.5 w-3.5 text-sky-600" /> Delivery charge
+                <span className="font-medium text-slate-400">(optional)</span>
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-36">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">NPR</span>
+                  <input
+                    id="co-delivery"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={deliveryChargeInput}
+                    onChange={(e) => setDeliveryChargeInput(e.target.value)}
+                    placeholder="0"
+                    className={`${inputBase} pl-11 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+                  />
+                </div>
+                {[50, 100, 150].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setDeliveryChargeInput(orderDeliveryCharge === v ? '' : String(v))}
+                    aria-pressed={orderDeliveryCharge === v}
+                    className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                      orderDeliveryCharge === v
+                        ? 'border-sky-300 bg-sky-50 text-sky-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700'
+                    }`}
+                  >
+                    +{v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Total + CTA */}
             <div className="space-y-3 border-t border-slate-100 pt-4">
+              {orderDeliveryCharge > 0 && (
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between text-slate-500">
+                    <span>Items</span>
+                    <span className="font-mono">{formatNPR(cartTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sky-700">
+                    <span>Delivery charge</span>
+                    <span className="font-mono">+{formatNPR(orderDeliveryCharge)}</span>
+                  </div>
+                </div>
+              )}
               <div className="flex items-end justify-between">
                 <span className="text-sm font-semibold text-slate-500">Order total</span>
                 <span className="font-mono text-2xl font-bold tabular-nums tracking-tight text-purple-700">
-                  {formatNPR(cartTotal)}
+                  {formatNPR(totalWithDelivery)}
                 </span>
               </div>
 
@@ -1430,7 +1487,7 @@ pickCustomer(customerSuggestions[highlight]);
             <ShoppingCart className="h-4 w-4" />
             View order · {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}
           </span>
-          <span className="font-mono text-sm font-bold">{formatNPR(cartTotal)}</span>
+          <span className="font-mono text-sm font-bold">{formatNPR(totalWithDelivery)}</span>
         </button>
       )}
 
@@ -1523,9 +1580,15 @@ pickCustomer(customerSuggestions[highlight]);
                 ))}
               </div>
 
+              {orderDeliveryCharge > 0 && (
+                <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-sky-700">
+                  <span className="font-semibold">Delivery charge</span>
+                  <span className="font-mono font-bold">+{formatNPR(orderDeliveryCharge)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-slate-200 pt-3">
                 <span className="font-bold text-slate-900">Total</span>
-                <span className="font-mono text-lg font-bold text-purple-700">{formatNPR(cartTotal)}</span>
+                <span className="font-mono text-lg font-bold text-purple-700">{formatNPR(totalWithDelivery)}</span>
               </div>
 
               <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3">

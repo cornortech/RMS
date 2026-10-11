@@ -34,6 +34,7 @@ const createOrderSchema = mongoose.Schema({
     },
         customerPhone: { type: String, default: "" },
     customerAddress: { type: String, default: "" },
+        deliveryCharge: { type: Number, default: 0, min: 0 },
     tableNumber: {
         type: String,
     },

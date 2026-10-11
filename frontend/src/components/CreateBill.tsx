@@ -63,6 +63,7 @@ interface Order {
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
+  deliveryCharge?: number;
   tableNumber: string;
   orderNote?: string;
   items: OrderItem[];
@@ -1930,7 +1931,8 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     setMarkAsDelivery(false);
     setDeliveryPhone(selectedOrder?.customerPhone || '');
     setDeliveryAddress(selectedOrder?.customerAddress || '');
-        setDeliveryCharge(0);
+    // 🛵 Filled from the order (if given when the order was created) — still editable here
+    setDeliveryCharge(Math.max(Number(selectedOrder?.deliveryCharge) || 0, 0));
     setVatRate(DEFAULT_VAT_RATE);
     setQrMethod(null);
     setBillToName('');
