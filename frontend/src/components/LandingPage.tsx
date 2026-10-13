@@ -354,7 +354,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
             <dl className="mt-10 grid max-w-lg grid-cols-3 divide-x divide-purple-100 rounded-2xl border border-purple-100 bg-white/80 shadow-xs backdrop-blur">
               <div className="px-3 py-3 sm:px-4">
                 <dt className="text-[10px] font-black uppercase tracking-widest text-slate-400">Features</dt>
-                <dd className="mt-0.5 text-lg sm:text-xl font-black text-[#1e003a]">35 +</dd>
+                <dd className="mt-0.5 text-lg sm:text-xl font-black text-[#1e003a]">24 +</dd>
               </div>
               <div className="px-3 py-3 sm:px-4">
                 <dt className="text-[10px] font-black uppercase tracking-widest text-slate-400">Free trial</dt>
@@ -534,7 +534,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
           <SectionHeading
             eyebrow="Key features"
             title="Everything you need, in one clean system"
-            subtitle="The core screens your team uses every day — plus everything else listed below."
+            subtitle="24 features working together, so your team spends less time on admin and more time on customers."
           />
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -593,6 +593,50 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
 
             <FeatureCard n="13" title="Settings" kind="settings" image="/products/atithi/settings.png" tint="from-[#f3e8ff] via-[#faf5ff] to-white">
               Restaurant details, password, payment QR, table QR, loyalty, and Features switches like VAT and drinks-off-KOT.
+            </FeatureCard>
+
+            <FeatureCard n="14" title="Online Ordering & Delivery" kind="order" tint="from-[#e0e7ff] via-[#eef2ff] to-white">
+              Customers order from your restaurant's own page with menu photos. Orders come straight into RMS and the kitchen.
+            </FeatureCard>
+
+            <FeatureCard n="15" title="Rider App & Live Tracking" kind="tracking" tint="from-[#fce7f3] via-[#fdf2f8] to-white">
+              Riders log in on their phone with a PIN and update each delivery, while customers follow their order live.
+            </FeatureCard>
+
+            <FeatureCard n="16" title="Delivery Bills & Reports" kind="pending" tint="from-[#dcfce7] via-[#f0fdf4] to-white">
+              Delivery charge on orders and bills, rider-collected bills kept separately, and delivery earnings and rider performance reports.
+            </FeatureCard>
+
+            <FeatureCard n="17" title="Table QR Menu & Call Waiter" kind="menu" tint="from-[#fef3c7] via-[#fffbeb] to-white">
+              Guests scan the QR on their table to see the menu with photos and call a waiter — staff get a sound alert.
+            </FeatureCard>
+
+            <FeatureCard n="18" title="Payment QR & Split Payment" kind="bill" tint="from-[#e0f2fe] via-[#f0f9ff] to-white">
+              eSewa, Khalti and Fonepay QR shown on screen and on the bill. One bill can be paid by more than one method.
+            </FeatureCard>
+
+            <FeatureCard n="19" title="Customer Loyalty Points" kind="sales" tint="from-[#f3e8ff] via-[#faf5ff] to-white">
+              Regular guests collect points on every bill and redeem them for rewards you choose.
+            </FeatureCard>
+
+            <FeatureCard n="20" title="Saved Customers & Cancelled-Bill Warning" kind="order" tint="from-[#e0e7ff] via-[#eef2ff] to-white">
+              Type a phone number and the name and address fill in. If that customer had cancelled bills, staff see “Take payment first” and the reasons.
+            </FeatureCard>
+
+            <FeatureCard n="21" title="Staff Attendance (Fingerprint)" kind="staff" tint="from-[#fce7f3] via-[#fdf2f8] to-white">
+              Staff check in and out with a fingerprint machine. See late and overtime, and download Excel reports.
+            </FeatureCard>
+
+            <FeatureCard n="22" title="Works Offline" kind="dashboard" tint="from-[#dcfce7] via-[#f0fdf4] to-white">
+              Internet gone? Keep taking orders and bills — everything syncs automatically when it comes back.
+            </FeatureCard>
+
+            <FeatureCard n="23" title="VAT & Feature Settings" kind="settings" tint="from-[#fef3c7] via-[#fffbeb] to-white">
+              Turn VAT on and set the rate once, and switch features like drinks-off-KOT on or off for your restaurant.
+            </FeatureCard>
+
+            <FeatureCard n="24" title="English & Nepali" kind="audit" tint="from-[#e0f2fe] via-[#f0f9ff] to-white">
+              Switch the whole system between English and Nepali, with Nepali (BS) dates on bills. Install it on any device like an app.
             </FeatureCard>
           </div>
         </section>
