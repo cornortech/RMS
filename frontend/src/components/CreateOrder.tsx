@@ -279,7 +279,8 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   const [customerPhone, setCustomerPhone] = useState('');
   // ⚠️ Cancelled bills for the typed phone number
   const [cancelHistory, setCancelHistory] = useState<CancelledBill[]>([]);
-  const [showAllCancels, setShowAllCancels] = useState(false);
+  // ✕ Closed by the user (for this phone number only; a new number shows it again)
+  const [cancelDismissedFor, setCancelDismissedFor] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
@@ -513,7 +514,6 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // ⚠️ When a phone number is typed, check if it has cancelled bills (waits 0.4 s after typing stops)
   useEffect(() => {
     const digits = customerPhone.replace(/\D/g, '');
-    setShowAllCancels(false);
     if (orderBy !== 'name' || digits.length < 7) {
       setCancelHistory([]);
       return;
@@ -953,7 +953,7 @@ pickCustomer(customerSuggestions[highlight]);
                     </div>
 
                     {/* ⚠️ This phone number has cancelled bills → take payment first */}
-                    {cancelHistory.length > 0 && (
+                    {cancelHistory.length > 0 && cancelDismissedFor !== customerPhone.replace(/\D/g, '') && (
                       <div role="alert" className="co-fade overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm shadow-rose-500/10">
                         <div className="flex items-start gap-3 border-b border-rose-100 bg-gradient-to-r from-rose-600 to-orange-500 px-4 py-3 text-white">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30">
@@ -968,10 +968,20 @@ pickCustomer(customerSuggestions[highlight]);
                           <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-black text-rose-600 shadow-sm">
                             {cancelHistory.length}×
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => setCancelDismissedFor(customerPhone.replace(/\D/g, ''))}
+                            aria-label="Close warning"
+                            title="Close"
+                            className="-mr-1 -mt-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/80 transition hover:bg-white/20 hover:text-white"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
                         </div>
 
-                        <ul className="divide-y divide-rose-100/80">
-                          {(showAllCancels ? cancelHistory : cancelHistory.slice(0, 3)).map((c, i) => (
+                        {/* More than 4 → the list scrolls inside the card */}
+                        <ul className={`divide-y divide-rose-100/80 ${cancelHistory.length > 4 ? 'max-h-64 overflow-y-auto overscroll-contain' : ''}`}>
+                          {cancelHistory.map((c, i) => (
                             <li key={`${c.invoiceNo}-${i}`} className="flex gap-3 px-4 py-2.5">
                               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-[11px] font-black text-rose-700">
                                 {i + 1}
@@ -993,15 +1003,10 @@ pickCustomer(customerSuggestions[highlight]);
                           ))}
                         </ul>
 
-                        {cancelHistory.length > 3 && (
-                          <button
-                            type="button"
-                            onClick={() => setShowAllCancels((v) => !v)}
-                            className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-rose-100 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50"
-                          >
-                            {showAllCancels ? 'Show less' : `Show all ${cancelHistory.length} reasons`}
-                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllCancels ? 'rotate-180' : ''}`} />
-                          </button>
+                        {cancelHistory.length > 4 && (
+                          <p className="flex items-center justify-center gap-1 border-t border-rose-100 py-1.5 text-[10px] font-bold uppercase tracking-wider text-rose-500">
+                            <ChevronDown className="h-3 w-3" /> Scroll to see all {cancelHistory.length} reasons
+                          </p>
                         )}
 
                         {!paidVia && (
