@@ -1,0 +1,11 @@
+# Atithi RMS
+User-agent: *
+Allow: /
+# Private pages (customer links, rider app, login) — not for search results
+Disallow: /scan/
+Disallow: /order/
+Disallow: /track/
+Disallow: /rider/
+Disallow: /login
+
+Sitemap: https://atithi.cornortech.com/sitemap.xml

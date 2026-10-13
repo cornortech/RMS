@@ -887,7 +887,10 @@ const { lang, setLang } = useLang();
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('sidebarCollapsed') === '1'; } catch { return false; }
   });
-  const [splashDone, setSplashDone] = useState(false);
+  // No login saved (a visitor or Google) → skip the loading screen so the product page shows at once
+  const [splashDone, setSplashDone] = useState(() => {
+    try { return !localStorage.getItem('authToken'); } catch { return false; }
+  });
   // 🏠 First page = Atithi RMS product page. "Login" (or the /login address) opens the login page.
   const [showLogin, setShowLogin] = useState(() => window.location.pathname.startsWith('/login'));
 
