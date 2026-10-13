@@ -23,6 +23,7 @@ const QrConfig = require("./models/QrConfig");
 const Loyalty = require("./models/loyalty");
 const Customer = require("./models/customerName");
 const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./utils/subscription");
+const adminOtp = require("./utils/adminOtp"); // 🔐 admin login email code
 const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
 const { deleteImage } = require("./utils/cloudinary");
@@ -267,6 +268,21 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
             await restaurant.save();
         }
 
+        // 🔐 Admin: password is not enough — a code is emailed, and the token is given only after the code
+        if (restaurant.isAdmin) {
+            try {
+                const otp = await adminOtp.startAdminOtp(restaurant);
+                return res.status(200).json({
+                    success: true,
+                    otpRequired: true,
+                    message: `We sent a 6-digit code to ${otp.sentTo}. It expires in 1 minute.`,
+                    ...otp,
+                });
+            } catch (e) {
+                return res.status(e.status || 500).json({ success: false, message: e.message || "Could not start admin login." });
+            }
+        }
+
         const token = signToken({ kind: "restaurant", uid: String(restaurant._id) });
         return res.status(200).json({
             success: true,
@@ -277,6 +293,107 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     } catch (error) {
         console.error("🔴 LOGIN ERROR:", error);
         return res.status(500).json({ success: false, message: "Server error during login." });
+    }
+});
+
+// ==========================================
+// 🔐 ADMIN LOGIN — CHECK THE EMAIL CODE
+//   POST /api/auth/admin-otp/verify  { challengeId, code }
+//   POST /api/auth/admin-otp/resend  { challengeId }   (only after the old code expired)
+// ==========================================
+const validChallenge = (v) => typeof v === "string" && /^[a-f0-9]{48}$/.test(v);
+
+app.post("/api/auth/admin-otp/verify", loginLimiter, async (req, res) => {
+    try {
+        const challengeId = req.body?.challengeId;
+        const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+        if (!validChallenge(challengeId) || !/^\d{6}$/.test(code)) {
+            return res.status(400).json({ success: false, code: "OTP_BAD_INPUT", message: "Please enter the 6-digit code." });
+        }
+
+        // Count this try FIRST (in one step), so many fast guesses can't get around the limit
+        const ch = await adminOtp.AdminOtp.findOneAndUpdate(
+            { challengeId, attempts: mongoose.trusted({ $lt: adminOtp.MAX_ATTEMPTS }) },
+            { $inc: { attempts: 1 } },
+            { new: true }
+        );
+        if (!ch) {
+            await adminOtp.AdminOtp.deleteOne({ challengeId });
+            return res.status(401).json({ success: false, code: "OTP_RESTART", message: "This login is no longer valid. Please log in again." });
+        }
+
+        // ⏱️ Expired codes never work — even if the number is right
+        if (ch.expiresAt.getTime() <= Date.now()) {
+            return res.status(400).json({ success: false, code: "OTP_EXPIRED", message: "This code has expired. Please send a new code." });
+        }
+
+        if (!adminOtp.sameHash(adminOtp.hashCode(challengeId, code), ch.codeHash)) {
+            const left = adminOtp.MAX_ATTEMPTS - ch.attempts;
+            if (left <= 0) {
+                await adminOtp.AdminOtp.deleteOne({ challengeId });
+                return res.status(401).json({ success: false, code: "OTP_RESTART", message: "Too many wrong codes. Please log in again." });
+            }
+            return res.status(400).json({ success: false, code: "OTP_WRONG", message: `Wrong code. ${left} ${left === 1 ? "try" : "tries"} left.` });
+        }
+
+        // ✅ Correct: the code can never be used again
+        await adminOtp.AdminOtp.deleteOne({ challengeId });
+
+        const user = await RestaurantUser.findById(ch.userId);
+        if (!user || !user.isAdmin || !user.isActive) {
+            return res.status(401).json({ success: false, code: "OTP_RESTART", message: "Account not available. Please log in again." });
+        }
+
+        const token = signToken({ kind: "restaurant", uid: String(user._id) });
+        return res.status(200).json({ success: true, message: "Login successful!", token, user: publicUser(user) });
+    } catch (error) {
+        console.error("🔴 ADMIN OTP VERIFY:", error);
+        return res.status(500).json({ success: false, message: "Server error while checking the code." });
+    }
+});
+
+app.post("/api/auth/admin-otp/resend", loginLimiter, async (req, res) => {
+    try {
+        const challengeId = req.body?.challengeId;
+        if (!validChallenge(challengeId)) {
+            return res.status(400).json({ success: false, code: "OTP_RESTART", message: "Please log in again." });
+        }
+        const ch = await adminOtp.AdminOtp.findOne({ challengeId });
+        if (!ch || Date.now() - ch.createdAt.getTime() > adminOtp.LOGIN_WINDOW_MS || ch.resends >= adminOtp.MAX_RESENDS) {
+            if (ch) await adminOtp.AdminOtp.deleteOne({ challengeId });
+            return res.status(401).json({ success: false, code: "OTP_RESTART", message: "This login is no longer valid. Please log in again." });
+        }
+        // Only after the old code has expired
+        const waitMs = ch.expiresAt.getTime() - Date.now();
+        if (waitMs > 0) {
+            return res.status(429).json({ success: false, code: "OTP_WAIT", message: `Please wait ${Math.ceil(waitMs / 1000)} seconds before asking for a new code.` });
+        }
+
+        const code = adminOtp.newCode();
+        ch.codeHash = adminOtp.hashCode(challengeId, code); // the old code stops working
+        ch.expiresAt = new Date(Date.now() + adminOtp.CODE_TTL_MS);
+        ch.attempts = 0;
+        ch.resends += 1;
+        await ch.save();
+
+        try {
+            await adminOtp.sendCodeEmail(code);
+        } catch (e) {
+            console.error("🔴 ADMIN OTP RESEND EMAIL:", e.message);
+            ch.expiresAt = new Date(); // nothing was sent → allow trying again straight away
+            await ch.save();
+            return res.status(502).json({ success: false, message: "Could not send the email. Please try again." });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `New code sent to ${adminOtp.maskEmail(process.env.ADMIN_OTP_EMAIL)}.`,
+            expiresIn: adminOtp.CODE_TTL_MS / 1000,
+            sentTo: adminOtp.maskEmail(process.env.ADMIN_OTP_EMAIL),
+        });
+    } catch (error) {
+        console.error("🔴 ADMIN OTP RESEND:", error);
+        return res.status(500).json({ success: false, message: "Server error while sending a new code." });
     }
 });
 

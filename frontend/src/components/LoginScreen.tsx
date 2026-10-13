@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   ShieldAlert, 
   Lock, 
@@ -6,8 +6,22 @@ import {
   Eye, 
   EyeOff, 
   Building2,
-  Utensils 
+  Utensils,
+  ShieldCheck,
+  MailCheck,
+  RefreshCw,
+  ArrowLeft,
+  Timer
 } from 'lucide-react';
+
+const AUTH_API = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api/auth`;
+
+// 🔐 Admin 2-step login: waiting for the email code
+interface OtpState {
+  challengeId: string;
+  sentTo: string;
+  expiresAt: number; // time (ms) when the code stops working
+}
 
 interface LoginScreenProps {
   lang: 'en' | 'ne';
@@ -22,6 +36,120 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // 🔐 Admin email code
+  const [otp, setOtp] = useState<OtpState | null>(null);
+  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpInfo, setOtpInfo] = useState('');
+  const [now, setNow] = useState(Date.now());
+  const digitRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  // Countdown (ticks every 0.25 s while the code screen is open)
+  useEffect(() => {
+    if (!otp) return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [otp]);
+
+  const secondsLeft = otp ? Math.max(0, Math.ceil((otp.expiresAt - now) / 1000)) : 0;
+  const codeExpired = !!otp && secondsLeft === 0;
+  const code = digits.join('');
+
+  const openOtp = (data: any) => {
+    setOtp({
+      challengeId: data.challengeId,
+      sentTo: data.sentTo || 'your email',
+      expiresAt: Date.now() + (Number(data.expiresIn) || 60) * 1000,
+    });
+    setDigits(['', '', '', '', '', '']);
+    setOtpInfo(data.message || '');
+    setErrorMsg('');
+    setNow(Date.now());
+    window.setTimeout(() => digitRefs.current[0]?.focus(), 50);
+  };
+
+  const backToLogin = (message = '') => {
+    setOtp(null);
+    setDigits(['', '', '', '', '', '']);
+    setOtpInfo('');
+    setPassword('');
+    setErrorMsg(message);
+  };
+
+  const verifyCode = async (value: string) => {
+    if (!otp || value.length !== 6 || isLoading) return;
+    if (codeExpired) {
+      setErrorMsg(lang === 'en' ? 'This code has expired. Please send a new code.' : 'कोडको समय सकियो। नयाँ कोड पठाउनुहोस्।');
+      return;
+    }
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`${AUTH_API}/admin-otp/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: otp.challengeId, code: value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.token) {
+        localStorage.setItem('RESTAURANTUser', JSON.stringify(data.user));
+        onLoginSuccess(data.token, data.user);
+        return;
+      }
+      if (data.code === 'OTP_RESTART') return backToLogin(data.message);
+      if (data.code === 'OTP_EXPIRED') setOtp((o) => (o ? { ...o, expiresAt: Date.now() } : o));
+      setErrorMsg(data.message || 'Wrong code.');
+      setDigits(['', '', '', '', '', '']);
+      window.setTimeout(() => digitRefs.current[0]?.focus(), 30);
+    } catch {
+      setErrorMsg(lang === 'en' ? 'Unable to connect to authentication server.' : 'प्रमाणीकरण सर्भरमा जडान गर्न असमर्थ।');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    if (!otp || isLoading) return;
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`${AUTH_API}/admin-otp/resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: otp.challengeId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        openOtp({ ...data, challengeId: otp.challengeId });
+        return;
+      }
+      if (data.code === 'OTP_RESTART') return backToLogin(data.message);
+      setErrorMsg(data.message || 'Could not send a new code.');
+    } catch {
+      setErrorMsg(lang === 'en' ? 'Unable to connect to authentication server.' : 'प्रमाणीकरण सर्भरमा जडान गर्न असमर्थ।');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Typing / pasting in the 6 boxes
+  const setDigitAt = (index: number, raw: string) => {
+    const onlyNums = raw.replace(/\D/g, '');
+    if (onlyNums.length > 1) {
+      // pasted the whole code
+      const next = onlyNums.slice(0, 6).split('');
+      while (next.length < 6) next.push('');
+      setDigits(next);
+      digitRefs.current[Math.min(onlyNums.length, 6) - 1]?.focus();
+      if (onlyNums.length >= 6) verifyCode(next.join(''));
+      return;
+    }
+    const next = [...digits];
+    next[index] = onlyNums;
+    setDigits(next);
+    if (onlyNums && index < 5) digitRefs.current[index + 1]?.focus();
+    if (next.every((d) => d)) verifyCode(next.join(''));
+  };
 
   const t = {
     en: {
@@ -80,6 +208,12 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
 
       const data = await response.json();
 
+      if (response.ok && data.success && data.otpRequired) {
+        // 🔐 Admin: password correct → now the email code
+        openOtp(data);
+        return;
+      }
+
       if (response.ok && data.success) {
         const userDetails = data.user;
         localStorage.setItem('RESTAURANTUser', JSON.stringify(userDetails));
@@ -135,7 +269,112 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
             </div>
           )}
 
-          {/* Form starting immediately below logo with zero top margin */}
+          {otp ? (
+            /* ================= 🔐 ADMIN EMAIL CODE ================= */
+            <div className="space-y-5" id="admin-otp">
+              <div className="flex flex-col items-center text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30">
+                  <ShieldCheck className="h-7 w-7" />
+                </span>
+                <h2 className="mt-3 text-lg font-extrabold text-slate-900">
+                  {lang === 'en' ? 'Verify it’s you' : 'आफूलाई प्रमाणित गर्नुहोस्'}
+                </h2>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                  <MailCheck className="h-3.5 w-3.5 text-purple-600" />
+                  {lang === 'en' ? 'Code sent to' : 'कोड पठाइयो'} <b className="text-slate-700">{otp.sentTo}</b>
+                </p>
+              </div>
+
+              {/* Timer */}
+              {!codeExpired ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <Timer className="h-3.5 w-3.5" /> {lang === 'en' ? 'Code expires in' : 'कोडको समय बाँकी'}
+                    </span>
+                    <span className={`font-mono text-sm ${secondsLeft <= 10 ? 'text-rose-600' : 'text-purple-700'}`}>
+                      {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-300 ${secondsLeft <= 10 ? 'bg-rose-500' : 'bg-gradient-to-r from-purple-600 to-indigo-500'}`}
+                      style={{ width: `${(secondsLeft / 60) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800">
+                  <Timer className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div>
+                    <b className="block">{lang === 'en' ? 'Code expired' : 'कोडको समय सकियो'}</b>
+                    {lang === 'en'
+                      ? 'This code no longer works. Send a new code to your email.'
+                      : 'यो कोड अब चल्दैन। इमेलमा नयाँ कोड पठाउनुहोस्।'}
+                  </div>
+                </div>
+              )}
+
+              {/* 6 boxes */}
+              <div className="flex justify-between gap-2" onPaste={(e) => { e.preventDefault(); setDigitAt(0, e.clipboardData.getData('text')); }}>
+                {digits.map((d, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => { digitRefs.current[i] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete={i === 0 ? 'one-time-code' : 'off'}
+                    maxLength={6}
+                    value={d}
+                    disabled={isLoading || codeExpired}
+                    aria-label={`Digit ${i + 1}`}
+                    onChange={(e) => setDigitAt(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace' && !digits[i] && i > 0) digitRefs.current[i - 1]?.focus();
+                    }}
+                    className={`h-13 w-full min-w-0 rounded-xl border-2 text-center font-mono text-xl font-extrabold outline-none transition-all disabled:bg-slate-100 disabled:text-slate-300 ${
+                      d ? 'border-purple-500 bg-purple-50 text-purple-800' : 'border-slate-200 bg-slate-50 text-slate-800'
+                    } focus:border-purple-600 focus:ring-4 focus:ring-purple-500/15`}
+                  />
+                ))}
+              </div>
+
+              {otpInfo && !errorMsg && !codeExpired && (
+                <p className="text-center text-[11px] text-slate-400">{otpInfo}</p>
+              )}
+
+              {codeExpired ? (
+                <button
+                  type="button"
+                  onClick={resendCode}
+                  disabled={isLoading}
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-purple-600 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-purple-600/20 transition-all hover:bg-purple-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  {isLoading ? (lang === 'en' ? 'Sending…' : 'पठाउँदै…') : lang === 'en' ? 'Send code again' : 'फेरि कोड पठाउनुहोस्'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => verifyCode(code)}
+                  disabled={isLoading || code.length !== 6}
+                  className="w-full cursor-pointer rounded-xl bg-purple-600 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-purple-600/20 transition-all hover:bg-purple-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  {isLoading ? (lang === 'en' ? 'Checking…' : 'जाँच हुँदैछ…') : lang === 'en' ? 'Verify & enter' : 'प्रमाणित गर्नुहोस्'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => backToLogin()}
+                disabled={isLoading}
+                className="mx-auto flex cursor-pointer items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-purple-700"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> {lang === 'en' ? 'Back to login' : 'लगइनमा फर्कनुहोस्'}
+              </button>
+            </div>
+          ) : (
+          /* Form starting immediately below logo with zero top margin */
           <form onSubmit={handleSubmit} className="space-y-4 mt-0" id="login-form">
             
             {/* Restaurant Name Field */}
@@ -205,6 +444,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
               {isLoading ? t.authenticating : t.loginBtn}
             </button>
           </form>
+          )}
         </div>
 
         {/* Security watermark footer */}
