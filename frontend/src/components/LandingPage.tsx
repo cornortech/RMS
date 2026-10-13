@@ -1,4 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import {
+  Globe, Bike, MapPinned, QrCode, BellRing, Wallet, SplitSquareHorizontal, Clock3, Star, Users, ShieldAlert,
+  Percent, GlassWater, ImagePlus, PackagePlus, Fingerprint, WifiOff, Languages, FileX2, Sunrise, Smartphone,
+  Printer, BadgeCheck, CreditCard,
+} from 'lucide-react';
 import { FeatureMedia, VisualKind } from './LandingVisuals';
 
 // =====================================================================
@@ -157,6 +162,23 @@ function FeatureCard({
   );
 }
 
+function MiniFeature({ icon: Icon, title, tag, children }: { icon: React.ElementType; title: string; tag?: string; children: React.ReactNode }) {
+  return (
+    <div className="group relative flex gap-4 rounded-2xl border border-purple-100/70 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-purple-200 hover:shadow-[0_18px_40px_-14px_rgba(147,51,234,0.25)]">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-100 to-indigo-100 text-purple-700 transition-colors group-hover:from-purple-600 group-hover:to-indigo-600 group-hover:text-white">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-[15px] font-black leading-snug text-[#1e003a]">{title}</h3>
+          {tag && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-100">{tag}</span>}
+        </div>
+        <p className="mt-1 text-[13px] font-medium leading-relaxed text-slate-500">{children}</p>
+      </div>
+    </div>
+  );
+}
+
 function PlanItem({ dark = false, children }: { dark?: boolean; children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2.5">
@@ -171,6 +193,7 @@ function PlanItem({ dark = false, children }: { dark?: boolean; children: React.
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'key-features', label: 'Features' },
+  { id: 'more-features', label: 'More' },
   { id: 'pricing', label: 'Pricing' },
   { id: 'why-it-works', label: 'Why It Works' },
 ];
@@ -306,7 +329,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
               Restaurant Management, Simplified
             </p>
             <p className="mt-4 max-w-xl text-[15px] font-medium leading-relaxed text-slate-600 lg:text-base">
-              A complete restaurant management system built to handle orders, tables, kitchen workflow, and billing — all from one clean dashboard.
+              One system for your whole restaurant — orders, tables, kitchen (KOT), IRD-ready billing with VAT, online orders with delivery riders, stock, staff attendance and customer loyalty. Works in English and Nepali, even when the internet goes down.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -331,7 +354,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
             <dl className="mt-10 grid max-w-lg grid-cols-3 divide-x divide-purple-100 rounded-2xl border border-purple-100 bg-white/80 shadow-xs backdrop-blur">
               <div className="px-3 py-3 sm:px-4">
                 <dt className="text-[10px] font-black uppercase tracking-widest text-slate-400">Features</dt>
-                <dd className="mt-0.5 text-lg sm:text-xl font-black text-[#1e003a]">13 +</dd>
+                <dd className="mt-0.5 text-lg sm:text-xl font-black text-[#1e003a]">35 +</dd>
               </div>
               <div className="px-3 py-3 sm:px-4">
                 <dt className="text-[10px] font-black uppercase tracking-widest text-slate-400">Free trial</dt>
@@ -376,7 +399,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
               </span>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Real time</p>
-                <p className="text-sm font-black text-[#1e003a]">Stock Tracking</p>
+                <p className="text-sm font-black text-[#1e003a]">Online Orders &amp; Delivery</p>
               </div>
             </div>
           </div>
@@ -386,13 +409,17 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
         <div className="relative border-y border-purple-100 bg-white/70 backdrop-blur">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-2 px-6 py-4 lg:px-8">
             <Chip>Order &amp; KOT Management</Chip>
-            <Chip>Table Management</Chip>
-            <Chip>Menu Management</Chip>
             <Chip>Kitchen Display System</Chip>
-            <Chip>Order Tracking</Chip>
-            <Chip>Billing &amp; VAT</Chip>
-            <Chip>Staff Roles</Chip>
+            <Chip>IRD Billing &amp; VAT</Chip>
+            <Chip>Online Orders &amp; Delivery</Chip>
+            <Chip>Rider App</Chip>
+            <Chip>Table QR Menu</Chip>
+            <Chip>eSewa · Khalti · Fonepay QR</Chip>
+            <Chip>Customer Loyalty</Chip>
             <Chip>Stock Tracking</Chip>
+            <Chip>Fingerprint Attendance</Chip>
+            <Chip>Works Offline</Chip>
+            <Chip>English &amp; Nepali</Chip>
           </div>
         </div>
       </section>
@@ -408,29 +435,33 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
               <div className="rounded-3xl border border-slate-100 bg-white p-7 shadow-[0_4px_30px_rgba(15,23,42,0.04)] lg:p-10">
                 <p className="text-lg font-semibold leading-relaxed text-slate-800 lg:text-xl">
                   <span className="float-left mr-3 mt-1 text-5xl font-black leading-[0.8] text-purple-600 lg:text-6xl">A</span>
-                  tithi RMS is designed for restaurants, cafes, and hotels that want to move away from paper-based order taking and disconnected billing systems. From the moment an order is placed at the table to when the kitchen prepares it and the final bill is generated, Atithi RMS keeps every step connected and visible in real time.
+                  tithi RMS is made for restaurants, cafes and hotels in Nepal that want to stop using paper and disconnected billing. From the moment a guest orders — at the table, by phone or on your online ordering page — until the bill is paid, every step is connected and updates live on every device.
                 </p>
 
                 <StoryParagraph n="01">
-                  At the center of the system is a live dashboard that gives managers an instant snapshot of the business through clear, straightforward numbers — today's revenue and today's total sales, alongside lifetime totals for revenue and orders. So if you've been using the system for 3 days, the dashboard reflects the combined revenue and orders across all 3 days, not just today, giving owners a clear picture of overall performance at any moment. A dedicated Total Sales view breaks this down further, showing daily sales figures with the option to print a daily sales report for accounting or record-keeping.
+                  The live Dashboard shows today's revenue, today's sales and lifetime totals, with dine-in and delivery revenue shown separately. Your business day starts at 5 AM, so late-night sales are counted on the right day. Total Sales gives a daily summary you can print, and every bill uses Nepali (BS) dates.
                 </StoryParagraph>
 
                 <StoryParagraph n="02">
-                  On the floor, Table Management gives staff a visual layout of every table, color-coded as Available, Occupied, Reserved, or Out of Service, with statuses updating instantly as guests are seated or leave. Orders are built through Create Order by browsing the menu and adding items in a few taps, and every order — whether being prepared, ready, or served — is visible in real time through Order Tracking. The moment an order is placed, it appears on the Kitchen Display, so the chef always knows what to prepare next, and can mark dishes as ready the instant they're done cooking, keeping the kitchen and the floor perfectly in sync.
+                  On the floor, Table Management shows every table as Available, Occupied, Reserved or Out of Service. Waiters take orders by table or by customer name and phone — saved customers fill in automatically. The moment an order is placed, it appears on the Kitchen Display and the KOT prints, with the customer's phone number. Drinks can be kept off the KOT with one switch in Settings, and drinks-only orders go straight to billing.
                 </StoryParagraph>
 
                 {storyOpen && (
                   <>
                     <StoryParagraph n="03">
-                      Billing is just as streamlined. Staff can generate itemized bills instantly through Create Bill, or save a bill as Pending if payment isn't settled right away — so nothing gets lost or forgotten while a customer steps out or a group decides how to split the cost. Every bill generated is stored permanently in Billing &amp; VAT Audit, giving owners a complete, searchable record for accounting and VAT purposes. Behind the scenes, Stock Management lets the team track ingredient and supply levels for the restaurant or cafe, helping avoid running out of popular items mid-shift, while Menu Management makes it easy to add, update, or remove dishes as the menu evolves.
+                      Billing is IRD-ready. Create Bill makes sequential, itemized bills with discount, VAT (set once in Settings) and an optional delivery charge. Customers can pay by Cash, eSewa, Khalti or Fonepay — or split across several — and your payment QR prints on the bill. Bills can also be saved as Pending (pay later) or as Delivery (collect from the rider). A wrong bill is never deleted: it is cancelled with a credit note and a reason, and every bill stays in Billing &amp; VAT Audit.
                     </StoryParagraph>
 
                     <StoryParagraph n="04">
-                      Atithi RMS also supports full staff role management. Only the manager can access Staff Management to create accounts for waiters, kitchen staff, and cashiers, and each role is limited to only the pages relevant to their job — keeping operations secure and every team member focused on their own responsibilities. A Settings page rounds out the system, letting owners manage restaurant details, update login credentials, and adjust other preferences whenever needed.
+                      Online ordering is built in. Customers order from your own ordering page with menu photos, you confirm, the kitchen cooks, and a rider delivers using the Rider App while the customer follows the order live. Delivery earnings and reports are shown separately. If a phone number has cancelled bills before, Create Order warns staff to take payment first and shows the reasons.
                     </StoryParagraph>
 
                     <StoryParagraph n="05">
-                      Whether you're running a single outlet or managing multiple branches, Atithi RMS scales with your business, giving owners the tools to reduce order errors, speed up table turnover, and understand exactly where their revenue is coming from.
+                      Customers can also scan the QR code on their table to see the menu and call a waiter — staff get a sound alert in Notifications. Loyalty points reward regular guests, Stock Management tracks ingredients with one-tap restock, and fingerprint Attendance records check-in, check-out, late and overtime with Excel download.
+                    </StoryParagraph>
+
+                    <StoryParagraph n="06">
+                      Each staff member gets their own login — Manager, Waiter, Kitchen Staff or Cashier — and sees only the pages for their job. If the internet drops, orders and bills are saved on the device and sync automatically when it comes back. Atithi RMS works in English and Nepali and can be installed on phones, tablets and computers like an app.
                     </StoryParagraph>
                   </>
                 )}
@@ -442,7 +473,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
                     aria-expanded={storyOpen}
                     className="mx-auto flex cursor-pointer items-center gap-2 rounded-full border border-purple-200 bg-purple-50 px-5 py-2.5 text-xs font-black text-purple-700 transition hover:bg-purple-100 active:scale-[0.97]"
                   >
-                    {storyOpen ? 'Show less' : 'Read the full story (3 more)'}
+                    {storyOpen ? 'Show less' : 'Read the full story (4 more)'}
                     <ChevronDown className={`h-4 w-4 transition-transform ${storyOpen ? 'rotate-180' : ''}`} />
                   </button>
                 </div>
@@ -458,7 +489,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
                     Built for
                   </p>
                   <p className="text-sm font-bold leading-relaxed text-white">
-                    A complete restaurant management system built to handle orders, tables, kitchen workflow, and billing — all from one clean dashboard.
+                    Restaurants, cafes, hotels and cloud kitchens — dine-in, takeaway and delivery, from one system.
                   </p>
                   <div className="my-5 h-px bg-white/10" />
                   <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-300">Category</p>
@@ -503,12 +534,12 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
           <SectionHeading
             eyebrow="Key features"
             title="Everything you need, in one clean system"
-            subtitle="13 features working together, so your team spends less time on admin and more time on customers."
+            subtitle="The core screens your team uses every day — plus everything else listed below."
           />
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <FeatureCard n="01" big title="Dashboard" kind="dashboard" image="/products/atithi/dashboard.png" tint="from-[#f3e8ff] via-[#faf5ff] to-white">
-              View today's revenue, today's total sales, and lifetime totals for revenue and orders.
+              Today's revenue and sales, lifetime totals, and dine-in and delivery revenue shown separately. The business day starts at 5 AM, so late-night sales count on the right day.
               <div className="mt-5 flex flex-wrap gap-1.5">
                 <span className="rounded-lg bg-purple-50 px-2.5 py-1 text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">Order &amp; KOT Management</span>
                 <span className="rounded-lg bg-purple-50 px-2.5 py-1 text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">Table Management</span>
@@ -517,19 +548,19 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
             </FeatureCard>
 
             <FeatureCard n="02" title="Total Sales" kind="sales" image="/products/atithi/total-sales.png" tint="from-[#e0e7ff] via-[#eef2ff] to-white">
-              View daily sales summaries and print daily sales reports at any time.
+              Daily sales summaries with Nepali (BS) dates — print the daily report any time.
             </FeatureCard>
 
             <FeatureCard n="03" title="Pending Bills" kind="pending" image="/products/atithi/pending-bills.png" tint="from-[#fce7f3] via-[#fdf2f8] to-white">
-              Save any bill as pending and come back to complete it later without losing order details.
+              Save a bill as pay-later and collect it when the customer is ready. Delivery bills are kept separately until the rider brings the money.
             </FeatureCard>
 
             <FeatureCard n="04" title="Create Bill" kind="bill" image="/products/atithi/create-bill.png" tint="from-[#dcfce7] via-[#f0fdf4] to-white">
-              Generate accurate, itemized bills quickly for any table or order.
+              IRD-ready bills with discount, VAT, delivery charge and split payment by Cash, eSewa, Khalti or Fonepay.
             </FeatureCard>
 
             <FeatureCard n="05" title="Kitchen Display (KOT)" kind="kitchen" image="/products/atithi/kot.png" tint="from-[#fef3c7] via-[#fffbeb] to-white">
-              New orders appear instantly for the chef to prepare, and can be marked ready once cooking is complete.
+              New orders appear instantly with an auto-printed KOT. The chef marks dishes ready — drinks can be kept off the KOT.
             </FeatureCard>
 
             <FeatureCard n="06" title="Table Management" kind="tables" image="/products/atithi/tables.png" tint="from-[#e0f2fe] via-[#f0f9ff] to-white">
@@ -537,32 +568,133 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
             </FeatureCard>
 
             <FeatureCard n="07" title="Create Order" kind="order" image="/products/atithi/create-order.png" tint="from-[#f3e8ff] via-[#faf5ff] to-white">
-              Browse the menu and create a new order in just a few taps.
+              Order by table or by customer name and phone. Saved customers fill in, and you can mark the order as already paid.
             </FeatureCard>
 
             <FeatureCard n="08" title="Order Tracking" kind="tracking" image="/products/atithi/order-tracking.png" tint="from-[#e0e7ff] via-[#eef2ff] to-white">
-              See every order at a glance, whether it is being prepared, ready, or already served.
+              Every order at a glance — pending, preparing, ready or served — including online orders.
             </FeatureCard>
 
             <FeatureCard n="09" title="Menu Management" kind="menu" image="/products/atithi/menu-management.png" tint="from-[#fce7f3] via-[#fdf2f8] to-white">
-              Add, update, delete, and view menu items with full control over pricing.
+              Add dishes with photos, prices, categories and add-ons. Photos show on the online order page and the table QR menu.
             </FeatureCard>
 
             <FeatureCard n="10" title="Stock Management" kind="stock" image="/products/atithi/stock-management.png" tint="from-[#dcfce7] via-[#f0fdf4] to-white">
-              Record and track stock levels for your restaurant or cafe ingredients.
+              Track opening, sold and closing stock with low-stock alerts — and restock in one tap when new stock arrives.
             </FeatureCard>
 
             <FeatureCard n="11" title="Billing & VAT Audit" kind="audit" image="/products/atithi/vat-audit.png" tint="from-[#fef3c7] via-[#fffbeb] to-white">
-              View a complete record of every bill generated, ready for accounting.
+              Every bill ever made, searchable for accounting. Wrong bills are cancelled with a credit note, never deleted.
             </FeatureCard>
 
             <FeatureCard n="12" title="Staff Management" kind="staff" image="/products/atithi/staff.png" tint="from-[#e0f2fe] via-[#f0f9ff] to-white">
-              Managers can create accounts for waiters, kitchen staff, and cashiers.
+              Create logins for waiters, kitchen staff and cashiers — each role sees only its own pages.
             </FeatureCard>
 
             <FeatureCard n="13" title="Settings" kind="settings" image="/products/atithi/settings.png" tint="from-[#f3e8ff] via-[#faf5ff] to-white">
-              Manage restaurant details, update your ID and password, and configure preferences.
+              Restaurant details, password, payment QR, table QR, loyalty, and Features switches like VAT and drinks-off-KOT.
             </FeatureCard>
+          </div>
+        </section>
+
+        {/* ==== Everything else ==== */}
+        <section id="more-features" className="mb-28 scroll-mt-32">
+          <SectionHeading
+            eyebrow="And much more"
+            title="Everything else built into Atithi RMS"
+            subtitle="No extra apps to buy — all of this is included."
+          />
+
+          {/* Online & delivery */}
+          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-purple-700">Online orders &amp; delivery</p>
+          <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MiniFeature icon={Globe} title="Your own online ordering page" tag="New">
+              Customers order from your restaurant's own page with menu photos. Orders come straight into RMS and the kitchen.
+            </MiniFeature>
+            <MiniFeature icon={Bike} title="Rider App" tag="New">
+              Riders log in on their phone with a PIN, see their deliveries, and update each order on the way.
+            </MiniFeature>
+            <MiniFeature icon={MapPinned} title="Live order tracking">
+              Customers follow their order live — confirmed, cooking, on the way, delivered.
+            </MiniFeature>
+            <MiniFeature icon={CreditCard} title="Delivery charge & delivery bills">
+              Add a delivery charge on the order or bill. Rider-collected bills wait in Delivery Bills until the money comes back.
+            </MiniFeature>
+            <MiniFeature icon={BadgeCheck} title="Delivery earnings & reports">
+              Delivery revenue, orders per day and rider performance — kept separate from dine-in.
+            </MiniFeature>
+            <MiniFeature icon={ShieldAlert} title="Cancelled-bill warning" tag="New">
+              Type a phone number in Create Order — if that customer had cancelled bills before, staff see “Take payment first” and the reasons.
+            </MiniFeature>
+          </div>
+
+          {/* Payments & customers */}
+          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-purple-700">Payments &amp; customers</p>
+          <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MiniFeature icon={Wallet} title="eSewa, Khalti & Fonepay QR">
+              Upload your payment QR codes once. Customers scan and pay — the QR is shown on screen and on the bill.
+            </MiniFeature>
+            <MiniFeature icon={SplitSquareHorizontal} title="Split payment">
+              One bill paid by more than one method — for example part cash and part eSewa.
+            </MiniFeature>
+            <MiniFeature icon={Clock3} title="Paid when ordering" tag="New">
+              Mark an order as already paid (Cash, eSewa, Khalti or Fonepay) — Create Bill shows “Paid from eSewa” or “Not paid”.
+            </MiniFeature>
+            <MiniFeature icon={Star} title="Customer loyalty points">
+              Regular guests collect points on every bill and redeem them for rewards you choose.
+            </MiniFeature>
+            <MiniFeature icon={Users} title="Saved customers">
+              Name, phone and address are remembered — type the phone number and the rest fills in.
+            </MiniFeature>
+            <MiniFeature icon={Percent} title="VAT setting" tag="New">
+              Turn VAT on and set the rate once in Settings — it is added to every new bill automatically.
+            </MiniFeature>
+          </div>
+
+          {/* Floor, kitchen & stock */}
+          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-purple-700">Floor, kitchen &amp; stock</p>
+          <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MiniFeature icon={QrCode} title="Table QR menu">
+              Guests scan the QR on their table to see the menu with photos — no app to download.
+            </MiniFeature>
+            <MiniFeature icon={BellRing} title="Call waiter & notifications">
+              Guests tap “Call waiter” from the table QR. Staff get a sound alert with the table number.
+            </MiniFeature>
+            <MiniFeature icon={GlassWater} title="Drinks off the KOT" tag="New">
+              One switch keeps beverages out of the kitchen. Drinks-only orders go straight to billing.
+            </MiniFeature>
+            <MiniFeature icon={Printer} title="KOT & bill printing">
+              Kitchen tickets and bills print cleanly on thermal printers, with the customer's phone on the KOT.
+            </MiniFeature>
+            <MiniFeature icon={ImagePlus} title="Menu photos">
+              Add a photo to each dish — shown in Create Order, on the table QR menu and on the online order page.
+            </MiniFeature>
+            <MiniFeature icon={PackagePlus} title="One-tap restock" tag="New">
+              New stock arrived? Add it in one step — health goes back to full, no need to delete and re-create.
+            </MiniFeature>
+          </div>
+
+          {/* Team, safety & everyday use */}
+          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-purple-700">Team, safety &amp; everyday use</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MiniFeature icon={Fingerprint} title="Fingerprint attendance">
+              Staff check in and out with a fingerprint machine. See late and overtime, and download Excel reports.
+            </MiniFeature>
+            <MiniFeature icon={FileX2} title="IRD-safe bill cancel">
+              Bills are never deleted. A wrong bill is cancelled with a reason and a credit note, ready for audit.
+            </MiniFeature>
+            <MiniFeature icon={WifiOff} title="Works offline">
+              Internet gone? Keep taking orders and bills — everything syncs automatically when it comes back.
+            </MiniFeature>
+            <MiniFeature icon={Languages} title="English & Nepali">
+              Switch the whole system between English and Nepali, with Nepali (BS) dates on bills.
+            </MiniFeature>
+            <MiniFeature icon={Sunrise} title="Business day starts at 5 AM">
+              Late-night sales after midnight still count on the right business day.
+            </MiniFeature>
+            <MiniFeature icon={Smartphone} title="Install like an app">
+              Use it on phones, tablets and computers — install it to the home screen like a normal app.
+            </MiniFeature>
           </div>
         </section>
 
@@ -618,6 +750,12 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
                 <PlanItem>Billing &amp; VAT Audit Logs</PlanItem>
                 <PlanItem>Role-Based Staff Management</PlanItem>
                 <PlanItem>System &amp; Outlet Settings</PlanItem>
+                <PlanItem>Online Orders, Rider App &amp; Live Tracking</PlanItem>
+                <PlanItem>Table QR Menu &amp; Call Waiter</PlanItem>
+                <PlanItem>eSewa · Khalti · Fonepay QR &amp; Split Payment</PlanItem>
+                <PlanItem>Customer Loyalty Points</PlanItem>
+                <PlanItem>Fingerprint Attendance</PlanItem>
+                <PlanItem>Works Offline · English &amp; Nepali</PlanItem>
                 <PlanItem>Unlimited Test Orders</PlanItem>
               </ul>
               <a
@@ -687,6 +825,12 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
                 <PlanItem dark>Billing &amp; VAT Audit Logs</PlanItem>
                 <PlanItem dark>Role-Based Staff Management</PlanItem>
                 <PlanItem dark>System &amp; Outlet Settings</PlanItem>
+                <PlanItem dark>Online Orders, Rider App &amp; Live Tracking</PlanItem>
+                <PlanItem dark>Table QR Menu &amp; Call Waiter</PlanItem>
+                <PlanItem dark>eSewa · Khalti · Fonepay QR &amp; Split Payment</PlanItem>
+                <PlanItem dark>Customer Loyalty Points</PlanItem>
+                <PlanItem dark>Fingerprint Attendance</PlanItem>
+                <PlanItem dark>Works Offline · English &amp; Nepali</PlanItem>
                 <PlanItem dark>Unlimited Test Orders</PlanItem>
                 <PlanItem dark>Priority support</PlanItem>
               </ul>
@@ -768,7 +912,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
                 </div>
                 <h3 className="mb-2 text-2xl font-black text-slate-900">Fast and reliable</h3>
                 <p className="text-sm font-medium leading-relaxed text-slate-600">
-                  No lag at peak hours. Every action syncs across all your devices the moment it happens.
+                  No lag at peak hours. Every action syncs across all your devices the moment it happens — and keeps working offline.
                 </p>
               </div>
               <div className="relative z-10 rounded-2xl border border-purple-100/80 bg-white/90 p-5 shadow-md backdrop-blur-md">
