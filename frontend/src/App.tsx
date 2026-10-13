@@ -23,6 +23,7 @@ import CreateOrder from './components/CreateOrder';
 import MenuManager from './components/MenuManager';
 import BillingManager from './components/BillingManager';
 import LoginScreen from './components/LoginScreen';
+import LandingPage from './components/LandingPage';
 import AdminDashboard from './components/AdminDashboard';
 import StaffManager from './components/StaffManager';
 import Attendance from './components/Attendance';
@@ -887,6 +888,21 @@ const { lang, setLang } = useLang();
     try { return localStorage.getItem('sidebarCollapsed') === '1'; } catch { return false; }
   });
   const [splashDone, setSplashDone] = useState(false);
+  // 🏠 First page = Atithi RMS product page. "Login" (or the /login address) opens the login page.
+  const [showLogin, setShowLogin] = useState(() => window.location.pathname.startsWith('/login'));
+
+  useEffect(() => {
+    // Browser back button: /login → product page
+    const onPop = () => setShowLogin(window.location.pathname.startsWith('/login'));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const openLogin = () => {
+    if (!window.location.pathname.startsWith('/login')) window.history.pushState({}, '', '/login');
+    setShowLogin(true);
+    window.scrollTo({ top: 0 });
+  };
 
   const [authState, setAuthState] = useState<{ isAuthenticated: boolean | null; isAdmin: boolean }>({
     isAuthenticated: null,
@@ -1060,6 +1076,7 @@ const { lang, setLang } = useLang();
     localStorage.removeItem('staffId');
     localStorage.removeItem('staffRESTAURANTName');
     localStorage.removeItem('staffShiftStart');
+    setShowLogin(true); // after logout go straight to the login page
     setCurrentUserPayload(null);
     setStaffPayload(null);
     setStaffAuthState({ isAuthenticated: false, role: null });
@@ -1146,7 +1163,12 @@ const { lang, setLang } = useLang();
     );
   }
 
-  // Gateway 2: not logged in
+  // Gateway 2a: not logged in → product page first
+  if (authState.isAuthenticated === false && !showLogin) {
+    return <LandingPage onLogin={openLogin} />;
+  }
+
+  // Gateway 2b: not logged in → login page
   if (authState.isAuthenticated === false) {
     return (
       <>
