@@ -269,7 +269,11 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
         }
 
         // 🔐 Admin: password is not enough — a code is emailed, and the token is given only after the code
-        if (restaurant.isAdmin) {
+        // 🚨 Emergency switch: ADMIN_OTP_OFF=true on Render skips the code (only if email is broken). Turn it off again after!
+        if (restaurant.isAdmin && process.env.ADMIN_OTP_OFF === "true") {
+            console.warn("⚠️ ADMIN LOGIN WITHOUT EMAIL CODE — ADMIN_OTP_OFF is true. Remove it as soon as email works again.");
+        }
+        if (restaurant.isAdmin && process.env.ADMIN_OTP_OFF !== "true") {
             try {
                 const otp = await adminOtp.startAdminOtp(restaurant);
                 return res.status(200).json({
