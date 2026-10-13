@@ -238,9 +238,10 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
       <div className="w-full max-w-md space-y-4 mt-20" id="login-container">
         
         {/* Core Auth Card - Removed top padding and vertical space gaps */}
-        <div className="bg-white border border-slate-100 rounded-3xl shadow-xl px-6 pb-6 pt-0 sm:px-8 sm:pb-8 sm:pt-0 relative overflow-hidden" id="login-card">
+        <div className={`bg-white border border-slate-100 rounded-3xl shadow-xl px-6 pb-6 sm:px-8 sm:pb-8 relative overflow-hidden ${otp ? 'pt-8 sm:pt-10' : 'pt-0 sm:pt-0'}`} id="login-card">
           
-          {/* Header & Standalone Top Logo (Zero bottom margin) */}
+          {/* Header & Standalone Top Logo (hidden on the admin code screen) */}
+          {!otp && (
           <div className="flex flex-col items-center text-center m-0 p-0" id="login-header">
             <div className="flex items-center justify-center m-0 p-0">
               <img
@@ -257,6 +258,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
               <Utensils className="h-16 w-16 text-purple-600 hidden" />
             </div>
           </div>
+          )}
 
           {/* Alert messages */}
           {errorMsg && (
