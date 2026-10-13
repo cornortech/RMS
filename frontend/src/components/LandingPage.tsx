@@ -214,7 +214,7 @@ export default function LandingPage({ onLogin }: { onLogin: () => void }) {
   const scrollToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-white font-sans">
+    <main className="min-h-screen overflow-x-clip bg-white font-sans">
       {/* ==== Sticky top bar ==== */}
       <div
         className={`sticky top-0 z-40 bg-white/85 backdrop-blur-xl transition-shadow duration-300 ${
