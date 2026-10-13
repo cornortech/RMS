@@ -26,6 +26,8 @@ import {
   Phone,
   MapPin,
   Bike,
+  ShieldAlert,
+  ChevronDown,
 } from 'lucide-react';
 import MenuImage from './MenuImage';
 
@@ -38,6 +40,17 @@ const MENU_URL = `${API_BASE}/api/menu`;
 const ORDERS_URL = `${API_BASE}/api/orders`;
 const TABLES_URL = `${API_BASE}/api/tables`;
 const CUSTOMERS_URL = `${API_BASE}/api/customers`;
+const CANCEL_HISTORY_URL = `${API_BASE}/api/cancel-history`;
+
+// ⚠️ A cancelled bill for this phone number (from the server)
+interface CancelledBill {
+  invoiceNo: string;
+  customerName: string;
+  grandTotal: number;
+  reason: string;
+  cancelledAt: string | null;
+  cancelledDateBS: string;
+}
 
 // Saved when an order is taken without a table / without a name
 const NO_TABLE_LABEL = 'No Table';
@@ -263,7 +276,10 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
 
   // Order
   const [orderBy, setOrderBy] = useState<OrderBy>('table');
-    const [customerPhone, setCustomerPhone] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  // ⚠️ Cancelled bills for the typed phone number
+  const [cancelHistory, setCancelHistory] = useState<CancelledBill[]>([]);
+  const [showAllCancels, setShowAllCancels] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
@@ -493,6 +509,34 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // Customer details are all optional: no name → "Guest"
   const finalCustomerName =
     orderBy === 'name' ? customerName.trim() || 'Guest' : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
+
+  // ⚠️ When a phone number is typed, check if it has cancelled bills (waits 0.4 s after typing stops)
+  useEffect(() => {
+    const digits = customerPhone.replace(/\D/g, '');
+    setShowAllCancels(false);
+    if (orderBy !== 'name' || digits.length < 7) {
+      setCancelHistory([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`${CANCEL_HISTORY_URL}?phone=${encodeURIComponent(digits)}`, {
+          headers: getAuthHeaders(),
+          signal: ctrl.signal,
+        });
+        const json = await res.json();
+        setCancelHistory(res.ok && json?.success && Array.isArray(json.data) ? json.data : []);
+      } catch {
+        /* offline or cancelled → no warning */
+      }
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerPhone, orderBy]);
 
   // ==========================================
   // CUSTOMER NAME PICKER HELPERS
@@ -907,6 +951,67 @@ pickCustomer(customerSuggestions[highlight]);
                         />
                       </div>
                     </div>
+
+                    {/* ⚠️ This phone number has cancelled bills → take payment first */}
+                    {cancelHistory.length > 0 && (
+                      <div role="alert" className="co-fade overflow-hidden rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 shadow-sm shadow-rose-500/10">
+                        <div className="flex items-start gap-3 border-b border-rose-100 bg-gradient-to-r from-rose-600 to-orange-500 px-4 py-3 text-white">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30">
+                            <ShieldAlert className="h-5 w-5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-extrabold tracking-tight">Take payment first</p>
+                            <p className="text-[11px] font-semibold text-white/85">
+                              This number has {cancelHistory.length} cancelled bill{cancelHistory.length === 1 ? '' : 's'}. Collect the money before sending the order.
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-black text-rose-600 shadow-sm">
+                            {cancelHistory.length}×
+                          </span>
+                        </div>
+
+                        <ul className="divide-y divide-rose-100/80">
+                          {(showAllCancels ? cancelHistory : cancelHistory.slice(0, 3)).map((c, i) => (
+                            <li key={`${c.invoiceNo}-${i}`} className="flex gap-3 px-4 py-2.5">
+                              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-[11px] font-black text-rose-700">
+                                {i + 1}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold leading-snug text-slate-800">
+                                  “{c.reason || 'No reason written'}”
+                                </p>
+                                <p className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] font-medium text-slate-500">
+                                  {c.invoiceNo && <span className="font-mono">#{c.invoiceNo}</span>}
+                                  {(c.cancelledDateBS || c.cancelledAt) && (
+                                    <span>{c.cancelledDateBS || new Date(c.cancelledAt as string).toLocaleDateString()}</span>
+                                  )}
+                                  {c.grandTotal > 0 && <span className="font-mono font-bold text-rose-600">NPR {c.grandTotal.toLocaleString()}</span>}
+                                  {c.customerName && <span>· {c.customerName}</span>}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+
+                        {cancelHistory.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllCancels((v) => !v)}
+                            className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-rose-100 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50"
+                          >
+                            {showAllCancels ? 'Show less' : `Show all ${cancelHistory.length} reasons`}
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllCancels ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
+
+                        {!paidVia && (
+                          <p className="border-t border-rose-100 bg-rose-50/70 px-4 py-2 text-[11px] font-semibold text-rose-700">
+                            Tip: after collecting, choose the method under <b>Payment</b> (Cash / eSewa / Khalti / Fonepay).
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="relative">
                       <UserCircle2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
@@ -1577,6 +1682,17 @@ pickCustomer(customerSuggestions[highlight]);
 {orderBy === 'table' ? 'Dine-in by table' : !typedName ? 'Guest' : isExistingCustomer ? 'Saved customer' : 'New customer'}
                 </span>
               </div>
+
+              {/* ⚠️ Reminder in the confirm box */}
+              {orderBy === 'name' && cancelHistory.length > 0 && (
+                <div className={`flex items-start gap-2.5 rounded-xl p-3 text-xs ring-1 ring-inset ${paidVia ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-rose-50 text-rose-800 ring-rose-200'}`}>
+                  {paidVia ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />}
+                  <span>
+                    <b>{cancelHistory.length} cancelled bill{cancelHistory.length === 1 ? '' : 's'}</b> for this number.{' '}
+                    {paidVia ? `Paid by ${paidVia} ✓` : 'Take payment first before sending this order.'}
+                  </span>
+                </div>
+              )}
 
               {staffId && (
                 <p className="flex items-center justify-between text-xs">

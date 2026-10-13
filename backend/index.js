@@ -1242,6 +1242,47 @@ app.post("/api/bills/:id/cancel", requireAuth, requireManager, async (req, res) 
 
 
 // ==========================================
+// ⚠️ Cancelled bills for one phone number
+//   GET /api/cancel-history?phone=98XXXXXXXX
+//   Create Order uses this to warn: "Take payment first" + the cancel reasons.
+//   Only this restaurant's bills (restaurant comes from the login token).
+// ==========================================
+app.get("/api/cancel-history", requireAuth, async (req, res) => {
+    try {
+        // Compare only the last 10 digits, so "+977-98..." and "98..." match
+        const digits = String(req.query.phone || "").replace(/\D/g, "").slice(-10);
+        if (digits.length < 7) return res.json({ success: true, data: [] });
+
+        const bills = await Bill.find({
+            restaurantId: req.auth.restaurantId,
+            status: "Cancelled",
+            customerPhone: mongoose.trusted({ $gt: "" }),
+        })
+            .select("invoiceNo customerName customerPhone grandTotal cancelReason cancelledAt cancelledDateBS")
+            .sort({ cancelledAt: -1 })
+            .limit(1000)
+            .lean();
+
+        const data = bills
+            .filter((b) => String(b.customerPhone).replace(/\D/g, "").slice(-10) === digits)
+            .slice(0, 20)
+            .map((b) => ({
+                invoiceNo: b.invoiceNo || "",
+                customerName: b.customerName || "",
+                grandTotal: Number(b.grandTotal) || 0,
+                reason: b.cancelReason || "",
+                cancelledAt: b.cancelledAt || null,
+                cancelledDateBS: b.cancelledDateBS || "",
+            }));
+
+        return res.json({ success: true, data });
+    } catch (error) {
+        console.error("🔴 CANCEL HISTORY:", error);
+        return res.status(500).json({ success: false, message: "Could not check cancelled bills." });
+    }
+});
+
+// ==========================================
 // 🧾 Stock
 // ==========================================
 
