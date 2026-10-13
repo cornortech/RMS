@@ -162,6 +162,8 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formRESTAURANTName, setFormRESTAURANTName] = useState('');
   const [formId, setFormId] = useState('');
+  // ✏️ Only the admin's own ID can be changed while editing
+  const [editingAdminRow, setEditingAdminRow] = useState(false);
   const [formPassword, setFormPassword] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPhone, setFormPhone] = useState('');
@@ -301,6 +303,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
     setEditingId(resto._id);
     setFormRESTAURANTName(resto.RESTAURANTName || resto.restaurantName || '');
     setFormId(resto.id);
+    setEditingAdminRow(isAdminAccount(resto));
     setFormIsActive(resto.isActive);
     setFormPassword('');
     setFormPhone(resto.phone || '');
@@ -371,6 +374,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
           RESTAURANTName: formRESTAURANTName,
           isActive: formIsActive,
           password: formPassword || undefined,
+          ...(editingAdminRow && formId.trim() ? { id: formId.trim() } : {}),
           phone: formPhone,
           email: formEmail,
           location: formLocation,
@@ -984,7 +988,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
                     <input
                       type="text"
                       required
-                      disabled={isEditing}
+                      disabled={isEditing && !editingAdminRow}
                       placeholder="Alphanumeric code string"
                       value={formId}
                       onChange={(e) => setFormId(e.target.value)}
