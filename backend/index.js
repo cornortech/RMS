@@ -279,7 +279,9 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
                 return res.status(200).json({
                     success: true,
                     otpRequired: true,
-                    message: `We sent a 6-digit code to ${otp.sentTo}. It expires in 1 minute.`,
+                    message: otp.reused
+                        ? `A code was already sent to ${otp.sentTo} — use the latest email. It works for ${otp.expiresIn} more seconds.`
+                        : `We sent a 6-digit code to ${otp.sentTo}. It expires in 1 minute.`,
                     ...otp,
                 });
             } catch (e) {

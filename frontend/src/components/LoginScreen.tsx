@@ -188,8 +188,12 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
     }
   }[lang];
 
+  const submittingRef = useRef(false); // stops a double click from logging in twice
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setErrorMsg('');
     setIsLoading(true);
 
@@ -225,6 +229,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess }: LoginScre
       setErrorMsg(lang === 'en' ? 'Unable to connect to authentication server.' : 'प्रमाणीकरण सर्भरमा जडान गर्न असमर्थ।');
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 

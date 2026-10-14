@@ -96,12 +96,36 @@ async function sendCodeEmail(code) {
 }
 
 // Step 1: password was correct → create the login + email the code
+// ✉️ Only ONE email per minute: a double click, or logging in again while the last code
+//    still works, re-uses that code instead of sending a new email.
+const inFlight = new Map(); // admin id → the login that is being started right now
+
 async function startAdminOtp(user) {
+  const key = String(user._id);
+  if (inFlight.has(key)) return inFlight.get(key); // two requests at the same moment → one email
+  const job = startAdminOtpNow(user).finally(() => inFlight.delete(key));
+  inFlight.set(key, job);
+  return job;
+}
+
+async function startAdminOtpNow(user) {
   if (!isConfigured()) {
     const err = new Error("Admin email code is not set up on the server.");
     err.status = 503;
     throw err;
   }
+  // A code was sent less than a minute ago and still works → use that one, no new email
+  const last = await AdminOtp.findOne({ userId: String(user._id) }).sort({ createdAt: -1 });
+  const msLeft = last ? last.expiresAt.getTime() - Date.now() : 0;
+  if (last && msLeft > 5000 && last.attempts < MAX_ATTEMPTS) {
+    return {
+      challengeId: last.challengeId,
+      expiresIn: Math.floor(msLeft / 1000),
+      sentTo: maskEmail(process.env.ADMIN_OTP_EMAIL),
+      reused: true,
+    };
+  }
+
   await AdminOtp.deleteMany({ userId: String(user._id) }); // only one pending login per admin
 
   const challengeId = crypto.randomBytes(24).toString("hex");
