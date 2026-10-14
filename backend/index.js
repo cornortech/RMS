@@ -102,24 +102,7 @@ const UNPAID_METHODS = ["Pending", "Due", "Delivery"];
 const isPaidMethod = (m) => !!m && !UNPAID_METHODS.includes(m);
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// 1. SAVE: new customer, or update phone/address if the same name already exists
-app.post("/api/customers", requireAuth, async (req, res) => {
-    try {
-        const restaurantId = req.auth.restaurantId;
-        const customerName = cleanText(req.body?.customerName, 80);
-        const customerPhone = cleanPhone(req.body?.customerPhone);
-        const customerAddress = cleanText(req.body?.customerAddress, 200);
-        if (!customerName) return res.status(400).json({ success: false, message: "Customer name is required." });
 
-        const update = {};
-        if (customerPhone) update.customerPhone = customerPhone;
-        if (customerAddress) update.customerAddress = customerAddress;
-
-        const saved = await Customer.findOneAndUpdate(
-            { restaurantId, customerName: mongoose.trusted({ $regex: `^${escapeRx(customerName)}$`, $options: "i" }) },
-            { $set: update, $setOnInsert: { restaurantId, customerName } },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
 // Last 10 digits of a phone ("+977 98-1234 5678" → "9812345678")
 const phoneKey = (p) => String(p || "").replace(/\D/g, "").slice(-10);
 // Finds a saved phone even if it was typed with spaces, dashes or +977
