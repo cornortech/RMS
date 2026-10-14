@@ -7,10 +7,8 @@ const customerSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
-        customerName: {
-            type: String,
-            trim: true,
-        },
+        // Name is optional now: a customer can be saved with only a phone number
+        customerName: { type: String, default: "", trim: true },
                 customerPhone: { type: String, default: "", trim: true },
         customerAddress: { type: String, default: "", trim: true },
     },

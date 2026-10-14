@@ -120,6 +120,53 @@ app.post("/api/customers", requireAuth, async (req, res) => {
             { $set: update, $setOnInsert: { restaurantId, customerName } },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
+// Last 10 digits of a phone ("+977 98-1234 5678" → "9812345678")
+const phoneKey = (p) => String(p || "").replace(/\D/g, "").slice(-10);
+// Finds a saved phone even if it was typed with spaces, dashes or +977
+const phoneRegex = (key) => mongoose.trusted({ $regex: `${key.split("").join("\\D*")}$` });
+
+// 1. SAVE: name and/or phone is needed.
+//    • Same name already saved      → update its phone/address
+//    • Only phone (no name)          → find by phone, update address (or create)
+//    • Name + phone of a phone-only customer → that customer gets the name
+app.post("/api/customers", requireAuth, async (req, res) => {
+    try {
+        const restaurantId = req.auth.restaurantId;
+        const customerName = cleanText(req.body?.customerName, 80);
+        const customerPhone = cleanPhone(req.body?.customerPhone);
+        const customerAddress = cleanText(req.body?.customerAddress, 200);
+        const key = phoneKey(customerPhone);
+        const hasPhone = key.length >= 7;
+        if (!customerName && !hasPhone) {
+            return res.status(400).json({ success: false, message: "Customer name or phone number is required." });
+        }
+
+        const update = {};
+        if (customerPhone) update.customerPhone = customerPhone;
+        if (customerAddress) update.customerAddress = customerAddress;
+
+        let existing = null;
+        if (customerName) {
+            existing = await Customer.findOne({
+                restaurantId,
+                customerName: mongoose.trusted({ $regex: `^${escapeRx(customerName)}$`, $options: "i" }),
+            });
+            // No customer with this name yet → maybe this phone was saved before without a name
+            if (!existing && hasPhone) {
+                existing = await Customer.findOne({ restaurantId, customerName: "", customerPhone: phoneRegex(key) });
+                if (existing) update.customerName = customerName;
+            }
+        } else {
+            // Phone only → newest customer with this phone (named or not)
+            existing = await Customer.findOne({ restaurantId, customerPhone: phoneRegex(key) }).sort({ updatedAt: -1 });
+            delete update.customerPhone; // keep their saved phone format
+        }
+
+        const saved = existing && Object.keys(update).length === 0
+            ? existing
+            : existing
+            ? await Customer.findOneAndUpdate({ _id: existing._id, restaurantId }, { $set: update }, { new: true })
+            : await Customer.create({ restaurantId, customerName, customerPhone, customerAddress });
         return res.status(201).json({ success: true, message: "Customer saved", data: saved });
     } catch (error) {
         console.error("🔴 CUSTOMER SAVE:", error);

@@ -197,6 +197,9 @@ const mapRawToCustomer = (raw: any): CustomerItem => ({
 
 const isTableFull = (t: TableItem) => t.capacity > 0 && t.occupiedSeats >= t.capacity;
 
+// Last 10 digits of a phone, so "+977 9812345678" and "98123-45678" are the same number
+const phoneKey = (p: string) => p.replace(/\D/g, '').slice(-10);
+
 // ==========================================
 // SMALL REUSABLE PIECES
 // ==========================================
@@ -384,12 +387,16 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
       const rawData = Array.isArray(result) ? result : result.data || [];
       const list: CustomerItem[] = rawData
         .map(mapRawToCustomer)
-        .filter((c: CustomerItem) => c.customerName && String(c.restaurantId) === String(restaurantId));
+        .filter(
+          (c: CustomerItem) =>
+            (c.customerName || phoneKey(c.customerPhone).length >= 7) && String(c.restaurantId) === String(restaurantId)
+        );
 
-      // Remove duplicate names (keeps the newest, the API already returns newest first)
+      // Remove duplicates (keeps the newest, the API already returns newest first).
+      // Named customers are unique by name, phone-only customers by phone.
       const seen = new Set<string>();
       const unique = list.filter((c) => {
-        const key = c.customerName.toLowerCase();
+        const key = c.customerName ? 'n:' + c.customerName.toLowerCase() : 'p:' + phoneKey(c.customerPhone);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -407,9 +414,15 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // Same name with a new phone/address → the saved details are updated.
   const saveCustomer = async (name: string, phone: string, address: string) => {
     const clean = name.trim();
-    if (!clean || !restaurantId) return;
-    const saved = customers.find((c) => c.customerName.toLowerCase() === clean.toLowerCase());
-    const changed = !saved || (phone.trim() && phone.trim() !== saved.customerPhone) || (address.trim() && address.trim() !== saved.customerAddress);
+    const key = phoneKey(phone);
+    if ((!clean && key.length < 7) || !restaurantId) return;
+    const saved = clean
+      ? customers.find((c) => c.customerName.toLowerCase() === clean.toLowerCase())
+      : customers.find((c) => phoneKey(c.customerPhone) === key);
+    const changed =
+      !saved ||
+      (phone.trim() && key !== phoneKey(saved.customerPhone)) ||
+      (address.trim() && address.trim() !== saved.customerAddress);
     if (!changed) return;
     try {
       const res = await fetch(CUSTOMERS_URL, {
@@ -541,15 +554,16 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // ==========================================
   // CUSTOMER NAME PICKER HELPERS
   // ==========================================
-  // Typing a phone number of a saved customer fills in their name and address
+  // Typing a phone number of a saved customer fills in their address,
+  // and their name too (only if a name was saved). Never overwrites what you typed.
   const handlePhoneChange = (value: string) => {
     const clean = value.replace(/[^0-9+\-\s]/g, '').slice(0, 20);
     setCustomerPhone(clean);
-    const digits = clean.replace(/\D/g, '');
-    if (digits.length < 7) return;
-    const match = customers.find((c) => c.customerPhone.replace(/\D/g, '') === digits);
+    const key = phoneKey(clean);
+    if (key.length < 7) return;
+    const match = customers.find((c) => c.customerPhone && phoneKey(c.customerPhone) === key);
     if (!match) return;
-    if (!customerName.trim()) setCustomerName(match.customerName);
+    if (!customerName.trim() && match.customerName) setCustomerName(match.customerName);
     if (!customerAddress.trim() && match.customerAddress) setCustomerAddress(match.customerAddress);
   };
 
@@ -700,8 +714,8 @@ pickCustomer(customerSuggestions[highlight]);
       if (res.ok && data?.success !== false) {
         showToast('Order placed successfully!', 'success');
 
-        // Save the customer name (only if it is new). Does not block the order.
-        if (nameToSave) saveCustomer(nameToSave, phoneToSave, addressToSave);
+        // Save the customer (name OR phone is enough). Does not block the order.
+        if (nameToSave || phoneKey(phoneToSave).length >= 7) saveCustomer(nameToSave, phoneToSave, addressToSave);
 
         setCart([]);
         setCustomerName('');
@@ -1074,7 +1088,7 @@ pickCustomer(customerSuggestions[highlight]);
                                 {customerName.trim() ? 'Matching customers' : 'Saved customers'}
                               </p>
                               {customerSuggestions.map((c, i) => {
-                                const isSelected = c.customerName.toLowerCase() === typedName.toLowerCase();
+                                const isSelected = !!c.customerName && c.customerName.toLowerCase() === typedName.toLowerCase();
                                 return (
                                   <button
                                     key={c.id}
@@ -1089,13 +1103,15 @@ pickCustomer(customerSuggestions[highlight]);
                                     }`}
                                   >
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100 text-[11px] font-bold uppercase text-purple-700">
-                                      {c.customerName.charAt(0)}
+                                      {c.customerName ? c.customerName.charAt(0) : <Phone className="h-3.5 w-3.5" />}
                                     </span>
-                                                                   <span className="min-w-0 flex-1">
-                                      <span className="block truncate font-semibold">{c.customerName}</span>
-                                      {(c.customerPhone || c.customerAddress) && (
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate font-semibold">{c.customerName || c.customerPhone}</span>
+                                      {(c.customerName ? c.customerPhone || c.customerAddress : c.customerAddress) && (
                                         <span className="block truncate text-[11px] text-slate-400">
-                                          {[c.customerPhone, c.customerAddress].filter(Boolean).join(' · ')}
+                                          {(c.customerName ? [c.customerPhone, c.customerAddress] : [c.customerAddress])
+                                            .filter(Boolean)
+                                            .join(' · ')}
                                         </span>
                                       )}
                                     </span>
