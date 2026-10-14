@@ -1937,8 +1937,11 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
       (result.data || [])
         .filter((b: any) => b.paymentMethod === 'Pending')
         .forEach((b: any) => {
-          const name = String(b.billTo || '').trim();
-          if (!name) return;
+          // Pending tab name (if it was moved from Delivery Bills), else the bill name.
+          // "Guest" bills are not a customer → never listed here (they are not merged by name).
+          const name = String(b.tabName || b.billTo || '').trim();
+          const low = name.toLowerCase();
+          if (!name || low === 'guest' || low.startsWith('guest (') || low === 'anonymous customer') return;
           const key = name.toLowerCase();
           const existing = map.get(key);
           if (existing) {

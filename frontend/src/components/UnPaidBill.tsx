@@ -59,6 +59,7 @@ interface Bill {
   billTo: string;
   customerPhone?: string;
   customerAddress?: string;
+  tabName?: string; // 🗂️ pending tab name (set when moved from Delivery Bills)
   tableNumber?: string;
   paymentMethod: string;
   date: string;
@@ -270,6 +271,27 @@ function normalizeName(name: string): string {
   return (name || '').trim().toLowerCase();
 }
 
+// "Guest", "Guest (T5)", "Anonymous Customer" … are not real names
+function isGuestName(name: string): boolean {
+  const n = normalizeName(name);
+  return !n || n === 'guest' || n.startsWith('guest (') || n === 'anonymous customer' || n === 'walk-in' || n === 'walk in';
+}
+
+const phoneDigits = (p?: string) => (p || '').replace(/\D/g, '').slice(-10);
+
+// Name shown for a pending bill: the tab name (if it was moved here with a name), else the bill name
+const tabNameOf = (b: Bill) => (b.tabName || '').trim() || b.billTo;
+
+// 🗂️ Which bills are merged into one pending card?
+//   real name → same name   |   no name → same phone   |   no name + no phone → never merged
+function pendingKeyOf(b: Bill): string {
+  const name = tabNameOf(b);
+  if (!isGuestName(name)) return `name:${normalizeName(name)}`;
+  const phone = phoneDigits(b.customerPhone);
+  if (phone.length >= 7) return `phone:${phone}`;
+  return `bill:${b._id}`;
+}
+
 function initials(name: string): string {
   const parts = (name || '?').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -374,7 +396,7 @@ function summarizeBills(bills: Bill[]): BillSummary {
 function groupPendingBills(bills: Bill[], perBill = false): GroupedPending[] {
   const groups = new Map<string, Bill[]>();
   for (const bill of bills) {
-    const key = perBill ? bill._id : normalizeName(bill.billTo);
+    const key = perBill ? bill._id : pendingKeyOf(bill);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(bill);
   }
@@ -388,8 +410,8 @@ function groupPendingBills(bills: Bill[], perBill = false): GroupedPending[] {
     const withPhone = groupBills.find((b) => b.customerPhone);
     const withAddress = groupBills.find((b) => b.customerAddress);
     result.push({
-      key: perBill ? groupBills[0]._id : normalizeName(groupBills[0].billTo),
-      billTo: groupBills[0].billTo,
+      key: perBill ? groupBills[0]._id : pendingKeyOf(groupBills[0]),
+      billTo: perBill ? groupBills[0].billTo : tabNameOf(groupBills[0]),
       phone: withPhone?.customerPhone || '',
       address: withAddress?.customerAddress || '',
       ...summary,
@@ -2138,16 +2160,52 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
     setReceiptLoyalty(null);
   };
 
-    // 🛵 Delivery Bills → move the selected delivery bill(s) to Pending Bills (pay later)
+  // 🛵 Delivery Bills → move the selected delivery bill(s) to Pending Bills (pay later)
+  //    Opens a picker (same as Create Bill → Pay later): type a name or pick an existing pending customer.
   const [movingToPending, setMovingToPending] = useState(false);
-  const moveToPending = async () => {
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveName, setMoveName] = useState('');
+
+  // Customers who already have pending bills (real names only)
+  const pendingCustomers = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number; total: number }>();
+    allBills
+      .filter((b) => b.paymentMethod === 'Pending')
+      .forEach((b) => {
+        const name = tabNameOf(b).trim();
+        if (isGuestName(name)) return;
+        const key = normalizeName(name);
+        const cur = map.get(key);
+        if (cur) {
+          cur.count += 1;
+          cur.total += b.grandTotal || 0;
+        } else {
+          map.set(key, { key, name, count: 1, total: b.grandTotal || 0 });
+        }
+      });
+    return Array.from(map.values()).sort((x, y) => x.name.localeCompare(y.name));
+  }, [allBills]);
+
+  const moveTyped = moveName.trim();
+  const moveMatch = moveTyped && !isGuestName(moveTyped)
+    ? pendingCustomers.find((c) => c.key === normalizeName(moveTyped)) || null
+    : null;
+  const movePhone = phoneDigits(selectedGroup?.phone);
+  const movePhoneMatch = useMemo(() => {
+    if (moveTyped && !isGuestName(moveTyped)) return null;
+    if (movePhone.length < 7) return null;
+    const same = allBills.filter((b) => b.paymentMethod === 'Pending' && pendingKeyOf(b) === `phone:${movePhone}`);
+    return same.length ? { count: same.length, total: same.reduce((t, b) => t + (b.grandTotal || 0), 0) } : null;
+  }, [allBills, moveTyped, movePhone]);
+
+  const moveToPending = () => {
     if (!selectedGroup || movingToPending) return;
-    const ok = window.confirm(
-      lang === 'en'
-        ? `Move this bill (NPR ${money(selectedGroup.grandTotal)}) to Pending Bills?`
-        : `यो बिल (NPR ${money(selectedGroup.grandTotal)}) बाँकी बिलमा सार्ने?`
-    );
-    if (!ok) return;
+    setMoveName(isGuestName(selectedGroup.billTo) ? '' : selectedGroup.billTo);
+    setMoveOpen(true);
+  };
+
+  const confirmMoveToPending = async () => {
+    if (!selectedGroup || movingToPending) return;
     setMovingToPending(true);
     setError('');
     try {
@@ -2155,11 +2213,12 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
         const res = await fetch(`${BILLS_URL}/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentMethod: 'Pending' }),
+          body: JSON.stringify({ paymentMethod: 'Pending', tabName: isGuestName(moveTyped) ? '' : moveTyped }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data?.success === false) throw new Error(data?.message || 'Could not move the bill to Pending.');
       }
+      setMoveOpen(false);
       setSelectedKey(null);
       await fetchBills();
     } catch (err: any) {
@@ -2978,6 +3037,168 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
                       {movingToPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
                       {lang === 'en' ? 'Move to Pending Bills (pay later)' : 'बाँकी बिलमा सार्नुहोस् (पछि तिर्ने)'}
                     </button>
+                  )}
+
+                  {/* 🗂️ Move to Pending — customer picker (same as Create Bill → Pay later) */}
+                  {isDeliveryMode && moveOpen && selectedGroup && createPortal(
+                    <div
+                      className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-[3px] sm:items-center sm:p-4"
+                      onClick={() => !movingToPending && setMoveOpen(false)}
+                    >
+                      <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={lang === 'en' ? 'Move to Pending Bills' : 'बाँकी बिलमा सार्नुहोस्'}
+                        className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-start gap-3 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-5 py-4">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                            <Clock className="h-5 w-5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-base font-bold text-slate-900">
+                              {lang === 'en' ? 'Move to Pending Bills' : 'बाँकी बिलमा सार्नुहोस्'}
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              NPR {money(selectedGroup.grandTotal)}
+                              {selectedGroup.phone ? ` · ${selectedGroup.phone}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setMoveOpen(false)}
+                            disabled={movingToPending}
+                            aria-label="Close"
+                            className="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-800"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+
+                        <div className="flex-1 space-y-3 overflow-y-auto p-5">
+                          <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                            <Users className="h-4 w-4 text-amber-600" />
+                            {lang === 'en' ? 'Customer for pending bill' : 'बाँकी बिलको ग्राहक'}
+                          </p>
+
+                          <div className="relative">
+                            <Users className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              value={moveName}
+                              onChange={(e) => setMoveName(e.target.value.slice(0, 80))}
+                              placeholder={lang === 'en' ? 'Type a new name or pick below' : 'नयाँ नाम लेख्नुहोस् वा तल छान्नुहोस्'}
+                              aria-label={lang === 'en' ? 'Pending customer name' : 'बाँकी ग्राहकको नाम'}
+                              autoFocus
+                              className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-9 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20"
+                            />
+                            {moveName && (
+                              <button
+                                type="button"
+                                onClick={() => setMoveName('')}
+                                aria-label={lang === 'en' ? 'Clear name' : 'नाम हटाउनुहोस्'}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-slate-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* What will happen */}
+                          {moveTyped && !isGuestName(moveTyped) ? (
+                            moveMatch ? (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                {lang === 'en'
+                                  ? `Will be added to ${moveMatch.name}'s existing tab (${moveMatch.count} bill${moveMatch.count !== 1 ? 's' : ''}, NPR ${money(moveMatch.total)}).`
+                                  : `${moveMatch.name} को पुरानो खातामा थपिनेछ (${moveMatch.count} बिल, NPR ${money(moveMatch.total)})।`}
+                              </p>
+                            ) : (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-sky-50 px-2.5 py-2 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
+                                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                {lang === 'en'
+                                  ? `A new pending tab will be created for "${moveTyped}".`
+                                  : `"${moveTyped}" को नयाँ बाँकी खाता बन्नेछ।`}
+                              </p>
+                            )
+                          ) : movePhoneMatch ? (
+                            <p className="flex items-start gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                              <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              {lang === 'en'
+                                ? `No name — will be added to the pending bills with the same phone ${selectedGroup.phone} (${movePhoneMatch.count} bill${movePhoneMatch.count !== 1 ? 's' : ''}).`
+                                : `नाम छैन — उही फोन ${selectedGroup.phone} को बाँकी बिलमा थपिनेछ।`}
+                            </p>
+                          ) : (
+                            <p className="flex items-start gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              {lang === 'en'
+                                ? 'No name — it will be saved as its own separate pending bill (not merged with other Guest bills).'
+                                : 'नाम छैन — छुट्टै बाँकी बिलको रूपमा राखिनेछ (अरू Guest बिलसँग मिसिँदैन)।'}
+                            </p>
+                          )}
+
+                          {/* Customers who already have pending bills */}
+                          {pendingCustomers.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                {lang === 'en' ? 'Customers with pending bills' : 'बाँकी बिल भएका ग्राहक'}
+                              </p>
+                              <ul className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
+                                {pendingCustomers.map((c) => {
+                                  const active = c.key === normalizeName(moveTyped);
+                                  return (
+                                    <li key={c.key}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setMoveName(c.name)}
+                                        aria-pressed={active}
+                                        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border-2 p-2.5 text-left transition-all ${
+                                          active ? 'border-amber-400 bg-amber-50/60 shadow-sm' : 'border-slate-100 bg-white hover:border-amber-200'
+                                        }`}
+                                      >
+                                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${gradientFor(c.name)} text-xs font-extrabold text-white`}>
+                                          {initials(c.name)}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-sm font-bold text-slate-900">{c.name}</span>
+                                          <span className="block text-[11px] text-slate-500">
+                                            {c.count} {lang === 'en' ? (c.count !== 1 ? 'bills' : 'bill') : 'बिल'}
+                                          </span>
+                                        </span>
+                                        <span className="shrink-0 font-mono text-xs font-bold text-amber-700">NPR {money(c.total)}</span>
+                                        {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />}
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3.5">
+                          <button
+                            type="button"
+                            onClick={() => setMoveOpen(false)}
+                            disabled={movingToPending}
+                            className="flex-1 cursor-pointer rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
+                          >
+                            {lang === 'en' ? 'Cancel' : 'रद्द'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={confirmMoveToPending}
+                            disabled={movingToPending}
+                            className="flex flex-[2] cursor-pointer items-center justify-center gap-2 rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-60"
+                          >
+                            {movingToPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                            {lang === 'en' ? 'Move to Pending' : 'बाँकीमा सार्नुहोस्'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
                   )}
 
                   {/* Mobile print button */}

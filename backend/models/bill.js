@@ -55,7 +55,10 @@ const restaurantBillingSchema = mongoose.Schema({
         type: String, 
         default: "Guest",
     },
-        customerPhone: { type: String, default: "" },
+    customerPhone: { type: String, default: "" },
+    // 🗂️ Name of the Pending Bills tab this bill belongs to (set when a delivery bill is moved
+    //    to Pending). The printed bill name (billTo) is never changed (IRD).
+    tabName: { type: String, default: "" },
     customerAddress: { type: String, default: "" },
         deliveryCharge: { type: Number, default: 0, min: 0 },
     tableNumber: {

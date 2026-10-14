@@ -1243,6 +1243,7 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             billTo: bill.billTo,
             customerPhone: bill.customerPhone || "",
             customerAddress: bill.customerAddress || "",
+            tabName: bill.tabName || "",
             tableNumber: bill.tableNumber,
             paymentMethod: bill.paymentMethod,
             cashPaidMoney: bill.cashPaidMoney,
@@ -1288,6 +1289,8 @@ app.patch("/api/bills/:id", requireAuth, async (req, res) => {
         if (eSewaPaidMoney !== undefined) updateFields.eSewaPaidMoney = parseNum(eSewaPaidMoney);
         if (khaltiPaidMoney !== undefined) updateFields.khaltiPaidMoney = parseNum(khaltiPaidMoney);
        if (fonepayPaidMoney !== undefined) updateFields.fonepayPaidMoney = parseNum(fonepayPaidMoney);
+        // 🗂️ Pending tab name (moving a delivery bill to Pending). billTo itself is never changed.
+        if (typeof req.body.tabName === "string") updateFields.tabName = cleanText(req.body.tabName, 80);
 
         // Ensure users can only update bills belonging to their restaurant (unless admin)
         const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
