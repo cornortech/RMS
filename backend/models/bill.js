@@ -43,6 +43,9 @@ const restaurantBillingSchema = mongoose.Schema({
         clientRef: { type: String },         // temporary number the bill had in the browser (offline bills)
     // 🧾 IRD: a bill is NEVER deleted. A wrong bill is cancelled with a credit note.
     status: { type: String, enum: ["Active", "Cancelled"], default: "Active" },
+    // 💰 When the money was actually received. Empty while the bill is Pending / Due / Delivery.
+    //    Daily revenue counts a bill on this day (a pending bill paid tomorrow counts tomorrow).
+    paidAt: { type: Date, default: null },
     creditNoteNo: { type: String },      // e.g. "CN-2083/84-00001"
     cancelReason: { type: String },
     cancelledBy: { type: String },

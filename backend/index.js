@@ -97,6 +97,9 @@ const cleanPhone = (v) => (typeof v === "string" ? v.replace(/[^0-9+\-\s]/g, "")
 // 💳 "Paid when ordered" — only these values are allowed, anything else = "" (Not paid)
 const PAID_VIA = ["Cash", "eSewa", "Khalti", "Fonepay"];
 const cleanPaidVia = (v) => (PAID_VIA.includes(v) ? v : "");
+// 💰 Bills with these methods are NOT paid yet → not counted in revenue until paid
+const UNPAID_METHODS = ["Pending", "Due", "Delivery"];
+const isPaidMethod = (m) => !!m && !UNPAID_METHODS.includes(m);
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // 1. SAVE: new customer, or update phone/address if the same name already exists
@@ -861,6 +864,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
             customerAddress: item.customerAddress || "",
             deliveryCharge: item.deliveryCharge || 0,
             paidVia: item.paidVia || "",
+            paidAt: item.paidAt || null,
             autoServed: !!item.autoServed,
             fromOnline: !!item.fromOnline,
             skipKitchen: !!item.skipKitchen,
@@ -948,6 +952,12 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
 
         if (!updatedItem) {
             return res.status(404).json({ success: false, message: "Order not found or unauthorized." });
+        }
+
+        // 💰 Order just became Paid → remember WHEN (only the first time)
+        if (updatedItem.paymentStatus === "Paid" && !updatedItem.paidAt) {
+            updatedItem.paidAt = new Date();
+            await Order.updateOne({ _id: updatedItem._id, paidAt: null }, { $set: { paidAt: updatedItem.paidAt } });
         }
 
                 // 🛵 DELIVERY: if this is an online order, move the delivery order forward too
@@ -1167,6 +1177,7 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             khaltiPaidMoney: parseNum(getValue(formData.khaltiPaidMoney, 0)),
             fonepayPaidMoney: parseNum(getValue(formData.fonepayPaidMoney, 0)),
                         date: billDate,
+            paidAt: isPaidMethod(getValue(formData.paymentMethod, "Cash")) ? billDate : null,
             items: (formData.items || []).map(i => ({
                 itemName: i.itemName || "Unknown Item",
                 quantity: parseNum(getValue(i.quantity, 1)),
@@ -1239,6 +1250,8 @@ app.get("/api/bills", requireAuth, async (req, res) => {
             khaltiPaidMoney: bill.khaltiPaidMoney,
             fonepayPaidMoney: bill.fonepayPaidMoney,
             date: bill.date,
+            // old bills (made before this change) have no paidAt → a paid one counts on its bill date
+            paidAt: bill.paidAt || (isPaidMethod(bill.paymentMethod) ? bill.date : null),
             items: bill.items,
             subtotal: bill.subtotal,
             discount: bill.discount,
@@ -1288,6 +1301,12 @@ app.patch("/api/bills/:id", requireAuth, async (req, res) => {
 
         if (!updatedBill) {
             return res.status(404).json({ success: false, message: "Bill not found or unauthorized." });
+        }
+
+        // 💰 Pending / Delivery bill just got paid → remember WHEN (only the first time)
+        if (isPaidMethod(updatedBill.paymentMethod) && !updatedBill.paidAt) {
+            updatedBill.paidAt = new Date();
+            await Bill.updateOne({ _id: updatedBill._id, paidAt: null }, { $set: { paidAt: updatedBill.paidAt } });
         }
 
         return res.status(200).json({

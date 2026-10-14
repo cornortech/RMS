@@ -250,6 +250,7 @@ interface RawBillLine {
   vatCollected: number;
   grandTotal: number;
   createdAt?: string;
+  paidAt?: string | null; // 💰 when the money came in (empty = not paid yet)
   restaurantId?: string;
   restaurantName?: string;
   location?: string;
@@ -270,6 +271,7 @@ interface InvoiceRecord {
   tableNumber: string;
   paymentMethod: string;
   date: string;
+  paidAt: string | null; // 💰 empty while Pending / Due / Delivery
   items: InvoiceLineItem[];
   subtotal: number;
   taxableAmount: number;
@@ -288,6 +290,7 @@ const mapBillToInvoice = (bill: RawBillLine): InvoiceRecord => ({
   tableNumber: String(bill.tableNumber ?? ''),
   paymentMethod: bill.paymentMethod,
   date: bill.date || bill.createdAt || new Date().toISOString(),
+  paidAt: bill.paidAt || null,
   items: (bill.items || []).map((item) => ({
     name: item.itemName ?? item.name ?? '',
     quantity: Number(item.quantity) || 0,
@@ -1357,8 +1360,12 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   // A bill made from a delivery kitchen ticket is already counted as delivery money
   // Left out of revenue: online-delivery kitchen tickets (counted as delivery money)
   // and "Delivery" bills whose money the rider has not brought back yet
-  const isDeliveryBill = (inv: InvoiceRecord) =>
-    inv.tableNumber.startsWith('Delivery DLV-') || inv.paymentMethod === 'Delivery';
+  // 💰 Revenue = PAID bills only. Pending / Due / Delivery (not collected yet) bills are left out
+  // until they are paid — then they count on the day the money came in (paidAt).
+  // Online-delivery kitchen tickets are counted as delivery money instead.
+  const countsAsRevenue = (inv: InvoiceRecord) =>
+    !!inv.paidAt && !inv.tableNumber.startsWith('Delivery DLV-');
+  const revenueDay = (inv: InvoiceRecord) => bizKey(new Date(inv.paidAt || inv.date));
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -1457,8 +1464,8 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   const dayTotals = useMemo(() => {
     const map = new Map<string, { total: number; count: number; dine: number; delivery: number }>();
     invoices.forEach((inv) => {
-      if (isDeliveryBill(inv)) return;
-      const key = bizKey(new Date(inv.date));
+      if (!countsAsRevenue(inv)) return;
+      const key = revenueDay(inv);
       const cur = map.get(key) || { total: 0, count: 0, dine: 0, delivery: 0 };
       cur.total += inv.grandTotal;
       cur.dine += inv.grandTotal;
@@ -1501,7 +1508,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   const dailySalesCount = todayData.count;
   const avgBillToday = dailySalesCount > 0 ? todayData.dine / dailySalesCount : 0;
   const dineInAllTime = useMemo(
-    () => invoices.reduce((sum, inv) => (isDeliveryBill(inv) ? sum : sum + inv.grandTotal), 0),
+    () => invoices.reduce((sum, inv) => (countsAsRevenue(inv) ? sum + inv.grandTotal : sum), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [invoices]
   );
@@ -1598,7 +1605,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     const firstKey = series[0]?.key || '';
     const map = new Map<string, number>();
     invoices.forEach((inv) => {
-      if (!isDeliveryBill(inv) && bizKey(new Date(inv.date)) >= firstKey) {
+      if (countsAsRevenue(inv) && revenueDay(inv) >= firstKey) {
         map.set(inv.paymentMethod, (map.get(inv.paymentMethod) || 0) + inv.grandTotal);
       }
     });
