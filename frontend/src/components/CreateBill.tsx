@@ -1542,7 +1542,7 @@ function PaymentQRModal({
 // PRINTABLE BILL MODAL (80mm thermal)
 // ==========================================
 
-function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: () => void }) {
+function BillModal({ bill, lang, onClose, preview = false }: { bill: any; lang: Lang; onClose: () => void; preview?: boolean }) {
   const billItems: BillItem[] = bill?.items ?? [];
   const vatRate = bill?.vatRate ?? 0;
   const hasVat = vatRate > 0;
@@ -1567,10 +1567,12 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
           aria-labelledby="bill-created-title"
           className="cb-pop flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl"
         >
-          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-4 text-white">
+          <div className={`flex shrink-0 items-center justify-between bg-gradient-to-r px-6 py-4 text-white ${preview ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500'}`}>
             <span id="bill-created-title" className="flex items-center gap-2 text-sm font-bold">
-              <PartyPopper className="h-5 w-5" />
-              {lang === 'en' ? 'Bill created' : 'बिल तयार भयो'}
+              {preview ? <Printer className="h-5 w-5" /> : <PartyPopper className="h-5 w-5" />}
+              {preview
+                ? (lang === 'en' ? 'Bill preview — not created yet' : 'बिल प्रिभ्यु — अझै बनेको छैन')
+                : (lang === 'en' ? 'Bill created' : 'बिल तयार भयो')}
             </span>
             <button
               onClick={onClose}
@@ -1582,12 +1584,21 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
           </div>
 
           <div className="space-y-4 overflow-y-auto p-6">
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-700">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              {lang === 'en'
-                ? `Invoice ${bill.invoiceNo} • ${bill.paymentMethod}`
-                : `बिजक ${bill.invoiceNo} • ${bill.paymentMethod}`}
-            </div>
+            {preview ? (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                {lang === 'en'
+                  ? 'Not saved — no bill number is used. Print it for the customer, then press “Create bill” when they pay.'
+                  : 'सेभ भएको छैन। ग्राहकलाई प्रिन्ट गरेर दिनुहोस्, भुक्तानी पछि “बिल बनाउनुहोस्” थिच्नुहोस्।'}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                {lang === 'en'
+                  ? `Invoice ${bill.invoiceNo} • ${bill.paymentMethod}`
+                  : `बिजक ${bill.invoiceNo} • ${bill.paymentMethod}`}
+              </div>
+            )}
 
             {loyalty && (
               loyalty.success ? (
@@ -1635,7 +1646,7 @@ function BillModal({ bill, lang, onClose }: { bill: any; lang: Lang; onClose: ()
                   <p className="text-[10px] font-bold text-black">{bill.location}</p>
                   <p className="text-[10px] font-black">PAN / VAT No: {bill.panOrVat}</p>
                   <h4 className="mt-1 border-y border-black py-1 text-xs font-black uppercase tracking-wider text-black">
-                    {lang === 'en' ? 'INVOICE / BILL' : 'बिजक'}
+                    {preview ? (lang === 'en' ? 'PRE-BILL (NOT PAID)' : 'प्रि-बिल (भुक्तानी बाँकी)') : lang === 'en' ? 'INVOICE / BILL' : 'बिजक'}
                   </h4>
                 </div>
 
@@ -1855,6 +1866,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   }, []);
   const [submitting, setSubmitting] = useState(false);
   const [createdBill, setCreatedBill] = useState<any | null>(null);
+    const [previewBill, setPreviewBill] = useState<any | null>(null); // 🖨️ bill printed before it is created
 
   const [qrMethod, setQrMethod] = useState<WalletId | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -2246,14 +2258,42 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     if (!selectedOrder) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (loyaltyOpen) setLoyaltyOpen(false);
+      if (previewBill) setPreviewBill(null);
+      else if (loyaltyOpen) setLoyaltyOpen(false);
       else if (qrMethod) setQrMethod(null);
       else if (!submitting) resetBuilder();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOrder, qrMethod, submitting, loyaltyOpen]);
+  }, [selectedOrder, qrMethod, submitting, loyaltyOpen, previewBill]);
+
+  // 🖨️ Print the bill BEFORE creating it (same as "Print" in Pending / Delivery bills).
+  //    Nothing is saved: no bill number is used and the order stays in "Served orders".
+  const openBillPreview = () => {
+    if (!selectedOrder) return;
+    setPreviewBill({
+      restaurantName,
+      location: restaurantLocation,
+      panOrVat: restaurantPanOrVat,
+      invoiceNo: lang === 'en' ? 'Not created yet' : 'अझै बनेको छैन',
+      billTo: finalBillTo,
+      customerPhone: (markAsDelivery ? deliveryPhone : selectedOrder.customerPhone || '').trim(),
+      customerAddress: (markAsDelivery ? deliveryAddress : selectedOrder.customerAddress || '').trim(),
+      tableNumber: selectedOrder.tableNumber || NO_TABLE_LABEL,
+      paymentMethod: lang === 'en' ? 'Not paid yet' : 'भुक्तानी बाँकी',
+      date: new Date().toISOString(),
+      items: billItems,
+      subtotal,
+      discountPercent: Number(safeDiscountPercent.toFixed(2)),
+      discount: discountAmount,
+      vatRate: hasVat ? safeVatRate : 0,
+      taxableAmount,
+      vatCollected,
+      deliveryCharge: safeDeliveryCharge,
+      grandTotal,
+    });
+  };
 
   const handleCreateBill = async () => {
     if (!selectedOrder || !canCreateBill) return;
@@ -2811,6 +2851,14 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                   )}
                 </div>
               </div>
+                            <button
+                onClick={openBillPreview}
+                disabled={submitting || billItems.length === 0}
+                className={`hidden cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-purple-300 hover:text-purple-700 active:scale-[0.97] disabled:opacity-50 sm:flex ${FOCUS}`}
+              >
+                <Printer className="h-4 w-4" />
+                {lang === 'en' ? 'Print' : 'प्रिन्ट'}
+              </button>
               <div className="hidden rounded-2xl border border-purple-100 bg-purple-50/70 px-4 py-2 text-right md:block">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500">
                   {lang === 'en' ? 'Grand total' : 'कुल जम्मा'}
@@ -3464,6 +3512,17 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       />
                     </div>
                   )}
+
+                  {/* Phone print button (the top one is hidden on small screens) */}
+                  <button
+                    type="button"
+                    onClick={openBillPreview}
+                    disabled={submitting || billItems.length === 0}
+                    className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 p-3 text-sm font-semibold text-slate-600 transition hover:border-purple-300 hover:text-purple-700 disabled:opacity-50 sm:hidden ${FOCUS}`}
+                  >
+                    <Printer className="h-4 w-4" />
+                    {lang === 'en' ? 'Print bill (before creating)' : 'बिल प्रिन्ट (बनाउनु अघि)'}
+                  </button>
                 </div>
 
                 {/* Desktop footer — always visible */}
@@ -3511,6 +3570,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
 
       {/* Printable bill modal, opened right after a bill is created */}
       {createdBill && <BillModal bill={createdBill} lang={lang} onClose={() => setCreatedBill(null)} />}
+              {previewBill && <BillModal bill={previewBill} preview lang={lang} onClose={() => setPreviewBill(null)} />}
     </div>
   );
 }
