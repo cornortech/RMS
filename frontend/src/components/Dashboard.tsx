@@ -65,7 +65,8 @@ const TEXT = {
     billsToday: 'Bills today',
     avgBill: 'Avg. bill',
     totalRevenue: 'Total Revenue',
-        dineIn: 'Dine-in',
+    foodLbl: 'Food',
+    beverageLbl: 'Beverage',
     deliveryLbl: 'Delivery',
     allTime: 'All-time total',
     totalOrders: 'Total Orders',
@@ -149,7 +150,8 @@ const TEXT = {
     billsToday: 'आजका बिलहरू',
     avgBill: 'औसत बिल',
     totalRevenue: 'कुल आम्दानी',
-        dineIn: 'रेस्टुरेन्ट',
+    foodLbl: 'खाना',
+    beverageLbl: 'पेय पदार्थ',
     deliveryLbl: 'डेलिभरी',
     allTime: 'सबै समयको जम्मा',
     totalOrders: 'कुल अर्डर',
@@ -1496,6 +1498,47 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   };
 
   const todayData = dayTotals.get(localKey(daysAgo(0))) || { total: 0, count: 0, dine: 0, delivery: 0 };
+    // 🍛🥤 Today's FOOD vs BEVERAGE money (dine-in bills).
+  // Each bill item gets its menu category: "Beverage" = beverage, every other category = food.
+  // Each bill's total (after discount + VAT) is shared over its items, so Food + Beverage = Dine-in.
+  const [menuCategory, setMenuCategory] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!restaurantId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/menu?restaurantId=${encodeURIComponent(restaurantId)}`);
+        const result = await res.json();
+        if (!res.ok || !result.success) return;
+        const map: Record<string, string> = {};
+        (result.data || []).forEach((m: any) => {
+          if (m?.itemName) map[String(m.itemName).trim().toLowerCase()] = String(m.category || '');
+        });
+        setMenuCategory(map);
+      } catch {
+        /* menu not loaded → everything counts as food */
+      }
+    })();
+  }, [restaurantId]);
+
+  const todayFoodBev = useMemo(() => {
+    const todayKey = localKey(daysAgo(0));
+    let food = 0;
+    let beverage = 0;
+    invoices.forEach((inv) => {
+      if (!countsAsRevenue(inv) || revenueDay(inv) !== todayKey) return;
+      const lines = inv.items || [];
+      const itemsSum = lines.reduce((s, l) => s + (Number(l.totalPrice) || 0), 0);
+      if (itemsSum <= 0) return;
+      const share = inv.grandTotal / itemsSum;
+      lines.forEach((l) => {
+        const amount = (Number(l.totalPrice) || 0) * share;
+        if (menuCategory[String(l.name || '').trim().toLowerCase()] === 'Beverage') beverage += amount;
+        else food += amount;
+      });
+    });
+    return { food, beverage };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, menuCategory]);
   const yesterdayData = dayTotals.get(localKey(daysAgo(1))) || { total: 0, count: 0 };
   const todayVsYesterday =
     yesterdayData.total > 0
@@ -1888,6 +1931,12 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
             </span>
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
               🛵 {T.deliveryLbl}: {formatNPR(todayData.delivery)}
+            </span>
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
+              🍛 {T.foodLbl}: {formatNPR(todayFoodBev.food)}
+            </span>
+            <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-800">
+              🥤 {T.beverageLbl}: {formatNPR(todayFoodBev.beverage)}
             </span>
           </div>
         )}

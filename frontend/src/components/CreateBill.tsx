@@ -1916,7 +1916,7 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         throw new Error(result.message || 'Failed to load orders.');
       }
       const served: Order[] = (result.data || []).filter((o: Order) => {
-        if (o.paymentStatus === 'Paid' || o.paymentStatus === 'Pending') return false; // already billed
+        if (o.paymentStatus === 'Paid' || o.paymentStatus === 'Pending' || o.paymentStatus === 'Refunded') return false; // already billed (Refunded = its bill was cancelled)
         const isOnline = String(o.tableNumber || '').startsWith('Delivery DLV-');
         // 🛵 Online orders: can be billed once the kitchen marks them Ready (or after delivery)
         if (isOnline) return !!o.fromOnline && (o.orderStatus === 'Ready' || o.orderStatus === 'Completed');
