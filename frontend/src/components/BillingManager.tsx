@@ -597,7 +597,7 @@ export default function BillingManager({
             <div className="absolute -right-8 -top-8 w-36 h-36 bg-sky-200/30 rounded-full blur-2xl pointer-events-none group-hover:scale-115 transition-transform" />
             <div className="space-y-1.5 relative z-10">
               <span className="text-[11px] uppercase font-bold tracking-wider text-sky-700 bg-white px-2.5 py-1 rounded-lg inline-block border border-sky-200/60 shadow-2xs">
-                {t.vatCollected} Collected (VAT)
+                {t.vatCollected}
               </span>
               <p className="font-mono font-black text-2xl tracking-tight text-slate-900">
                 NPR {money(totalVatToday)}

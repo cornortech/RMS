@@ -293,7 +293,8 @@ let syncing = false;
 
 async function serverReachable() {
   try {
-    const res = await fetchWithTimeout(`${API_ROOT}/health`, { cache: 'no-store' }, 6000);
+    // 15 s: a sleeping Render server needs time to wake up before it answers
+    const res = await fetchWithTimeout(`${API_ROOT}/health`, { cache: 'no-store' }, 15000);
     return res.ok;
   } catch {
     return false;

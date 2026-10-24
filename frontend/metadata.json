@@ -1,6 +1,0 @@
-{
-  "name": "Restaurant Management System",
-  "description": "A polished Restaurant management platform for Restaurants in Nepal.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

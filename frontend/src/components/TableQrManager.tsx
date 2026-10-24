@@ -119,9 +119,14 @@ export default function TableQrManager() {
         img { width: 100%; page-break-inside: avoid; }
       </style></head>
       <body><div class="grid">${cards.map((c) => `<img src="${c}" />`).join('')}</div>
-      <script>window.onload = () => { window.print(); }</script>
       </body></html>`);
     win.document.close();
+    // Start printing from here (a <script> inside the new window would be blocked by the security policy)
+    const imgs = Array.from(win.document.images);
+    Promise.all(imgs.map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = r; })))).then(() => {
+      win.focus();
+      win.print();
+    });
   };
 
   const copyLink = async (t: TableQr) => {
