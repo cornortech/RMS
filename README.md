@@ -2,238 +2,247 @@
 
 <img src="frontend/public/pwa-512.png" alt="Atithi RMS" width="110" />
 
-# Atithi RMS — Restaurant Management System
+# Atithi RMS
 
-**A multi-restaurant (SaaS) restaurant management system by CornorTech Pvt. Ltd.**
+**Restaurant management system for Nepal, by CornorTech Pvt. Ltd.**
 
-Orders · Kitchen display · Billing & VAT · Payment QR · Table QR menu · Call waiter · Loyalty · Stock · Staff roles · Works offline
+Orders · Kitchen display · Billing with VAT & IRD bill numbers · Payment QR · Table QR menu · Online delivery · Riders · Loyalty · Stock · Staff & fingerprint attendance · Works offline
 
 </div>
 
 ---
 
-## 📑 Table of contents
+## Contents
 
-1. [What is Atithi RMS?](#-what-is-atithi-rms)
-2. [Features](#-features)
-3. [User roles](#-user-roles)
-4. [Tech stack](#-tech-stack)
-5. [How the system works](#-how-the-system-works)
-6. [Folder structure](#-folder-structure)
-7. [Run it on your computer](#-run-it-on-your-computer)
-8. [Environment variables](#-environment-variables)
-9. [Create the first admin account](#-create-the-first-admin-account)
-10. [Deploy to production](#-deploy-to-production)
-11. [Table QR menu & Call Waiter](#-table-qr-menu--call-waiter)
-12. [Offline mode](#-offline-mode)
-13. [Security](#-security)
-14. [API overview](#-api-overview)
-15. [Troubleshooting](#-troubleshooting)
-16. [Updating the live system](#-updating-the-live-system)
-
----
-
-## 🍽️ What is Atithi RMS?
-
-Atithi RMS runs the full daily workflow of a restaurant, from taking an order at the table to printing the final bill. **Many restaurants use the same system at the same time**, and each restaurant only ever sees its own data.
-
-- The **Admin** (CornorTech) creates restaurant accounts and manages their subscription days.
-- Each **restaurant** logs in, and its **staff** sign in with their own ID and role.
-- **Customers** scan a QR code on their table to see the menu and call a waiter from their phone.
+1. [Overview](#overview)
+2. [Features](#features)
+3. [User roles](#user-roles)
+4. [Tech stack](#tech-stack)
+5. [Architecture](#architecture)
+6. [Folder structure](#folder-structure)
+7. [Run locally](#run-locally)
+8. [Environment variables](#environment-variables)
+9. [First admin account](#first-admin-account)
+10. [Deploy to production](#deploy-to-production)
+11. [Table QR menu and Call Waiter](#table-qr-menu-and-call-waiter)
+12. [Online delivery and riders](#online-delivery-and-riders)
+13. [Fingerprint attendance](#fingerprint-attendance)
+14. [Offline mode](#offline-mode)
+15. [Security](#security)
+16. [API overview](#api-overview)
+17. [Health check and monitoring](#health-check-and-monitoring)
+18. [Troubleshooting](#troubleshooting)
+19. [Updating the live system](#updating-the-live-system)
 
 ---
 
-## ✨ Features
+## Overview
 
-### 🧾 Orders & Kitchen
-- Create orders by table or by customer name, with order notes
-- Kitchen Display: move orders through **Pending → Preparing → Ready → Served**
-- Orders page: search, edit, and track every order
-- Daily order summary with print
+Atithi RMS runs the daily work of a restaurant: taking orders, the kitchen, billing, payments, delivery, stock, staff and reports. **Many restaurants share one system**, and each restaurant only ever sees its own data.
 
-### 💰 Billing & Payments
-- Create bills from served orders, with discount and VAT
-- Cash, eSewa, Khalti, IMEPay, card, or **split payment** across methods
-- **Pending (unpaid) bills** that can be paid later
-- **Dynamic payment QR**: upload your Fonepay/bank QR once, and every bill shows a QR with the exact amount
-- Printable invoices
-- **Billing & VAT audit** and **total sales** reports
+- The **Admin** (CornorTech) creates restaurant accounts and manages subscription days.
+- Each **restaurant** logs in on its devices, then **staff** sign in with their own ID and role.
+- **Customers** scan a table QR to see the menu and call a waiter, or order online for delivery.
+- **Riders** use their own phone app to take and deliver orders.
 
-### 📱 Table QR (for customers)
-- One QR code generated **automatically for every table**
-- Each QR card shows the restaurant name, table name, and branding
-- Download one QR or **print all** at once
-- Customer scans → sees **View Menu** and **Call Waiter**
-- Customers only ever see **that restaurant's** menu
+---
 
-### 🔔 Notifications
-- "Call Waiter" requests appear on the **Notifications** page within 5 seconds
-- Sound alert, pending count, "Attended" button, and history
+## Features
+
+### Orders and kitchen
+- Create orders by **table** or by **customer name / phone** (phone-only customers are saved too), with order notes
+- Saved customers: typing a phone number fills in the name and address
+- Warning when a customer's phone has **cancelled bills** before
+- **Kitchen Display**: Pending → Preparing → Ready → Served, with KOT printing
+- Optional: **skip beverages on the KOT** (Settings → Features)
+- Orders page: search, edit, cancel and track every order
+- Daily order summary with print and Excel download
+
+### Billing and payments
+- Create bills from served orders with **discount** (% or amount), **VAT** (on/off and rate in Settings → Features) and **delivery charge**
+- Payment by **Cash, eSewa, Khalti, Fonepay**, or **split** across several methods
+- **Pay later (Pending)**: bills of the same customer are merged, so they pay once
+- **Delivery bills**: money collected by the rider is marked paid later
+- **Print a pre-bill** (marked *PRE-BILL, NOT PAID*) before the bill is created
+- **Dynamic payment QR**: upload your eSewa / Khalti / Fonepay QR once; each bill shows a QR with the exact amount
+- **IRD bill numbers** per fiscal year, given by the server (e.g. `2083/84-00001`)
+- **Cancel a bill** with a reason: it gets a **credit note** number, stays on record, and is removed from sales and from Create Bill
+- Thermal (80 mm) receipt printing
+
+### Reports
+- **Dashboard**: daily revenue (dine-in, delivery, **food** and **beverage**), last 7 days, bills, orders, top items, staff activity, subscription days left
+- **Total Sales**: day by day, with Excel download
+- **Billing & VAT Audit**: payment-mode breakdown, taxable amount, VAT collected and the full invoice ledger (including cancelled bills and credit notes)
+- Dates in **AD and Nepali BS**
+
+### Table QR (customers)
+- One QR per table, made automatically, with the restaurant name and branding
+- Download one QR or print all
+- Customer scans → **View Menu** (that restaurant only) and **Call Waiter**
+
+### Notifications
+- "Call Waiter" requests appear on the **Notifications** page with sound, a pending count and an **Attended** button
 - Spam protection: one call per table every 2 minutes
 
-### 🍛 Menu, Tables & Stock
-- Menu items with categories, prices, and status (Available / Sold Out / Unavailable)
+### Online delivery and riders
+- Public **online ordering page** for each restaurant: open/closed switch, delivery areas and charges, minimum order, free delivery above an amount, cash on delivery or online payment (with payment QR)
+- Customers get a **tracking link** with live status
+- Delivery hub for staff: orders, riders, reports and settings
+- **Rider app** (phone): riders log in with phone + PIN, see assigned orders, update status and share location
+- Live updates with Socket.IO; optional Google Maps
+
+### Menu, tables and stock
+- Menu with categories (Appetizer, Main Course, Dessert, **Beverage**, Side, Combo, Other), prices, status and **photos** (Cloudinary)
 - **Combo** items (e.g. Momo + Coke)
-- Table management with capacity
+- Tables with capacity
 - Stock (inventory) management
 
-### ⭐ Loyalty program
-- Enroll customers by phone number
-- Earn points on bills and track tiers (Bronze, Silver, Gold, Platinum)
+### Loyalty
+- Loyalty programs, enrol customers by phone, earn points on paid bills, tiers (Bronze, Silver, Gold, Platinum)
 
-### 👥 Staff & Accounts
-- Staff accounts with roles: **Manager, Waiter, Kitchen Staff, Cashier**
-- Each role only sees and can do what it needs (checked on the server too)
-- Change password, edit restaurant details
-- Admin dashboard: create, edit, and deactivate restaurants, and set subscription days
+### Staff and attendance
+- Staff roles: **Manager, Waiter, Kitchen Staff, Cashier**; each role sees and can do only what it needs (checked on the server too)
+- **Fingerprint attendance** (ZKTeco-style machines over ADMS / `iclock`), manual entries, daily view, reports and Excel export
 
-### 📴 Offline mode
-- The app opens and keeps working when the internet goes down
-- Orders, bills, and payments are saved on the device and **synced automatically** later
-- No duplicate orders or bills when syncing
-- Can be **installed** like an app (PWA)
+### Admin
+- Create, edit, turn on/off and delete restaurant accounts; set subscription days
+- Admin login protected by an **email code** (Brevo or Google Apps Script)
 
-### 🌐 Other
-- English and Nepali (नेपाली) language
-- Works on laptop, tablet, and phone
+### Other
+- English and Nepali (नेपाली)
+- Works on laptop, tablet and phone; can be **installed** as an app (PWA)
+- **Offline mode** with automatic sync (see below)
 
 ---
 
-## 🧑‍🍳 User roles
+## User roles
 
-| Role | Can use |
+| Role | Pages |
 |---|---|
-| **Admin** (CornorTech) | Admin dashboard: all restaurant accounts and subscriptions |
-| **Manager** | Everything in their restaurant: dashboard, orders, kitchen, billing, reports, menu, tables, stock, staff, settings, notifications |
-| **Waiter** | Create Order, Orders, Menu (view), Notifications |
-| **Kitchen Staff** | Kitchen Display, Stock |
-| **Cashier** | Create Bill, Pending Bills, Tables, Billing & VAT, Total Sales, Stock |
+| **Admin** (CornorTech) | Admin dashboard: all restaurants and subscriptions |
+| **Manager** | Everything in their restaurant, including staff, attendance and settings |
+| **Waiter** | Create Order, Orders, Menu (view), Notifications, Delivery |
+| **Kitchen Staff** | Kitchen Display, Stock, Delivery |
+| **Cashier** | Create Bill, Pending Bills, Delivery Bills, Tables, Billing & VAT Audit, Total Sales, Stock, Delivery |
 
-The sidebar hides pages a role can't use, **and** the server blocks those actions, so a role can't get around it by editing the browser.
+The sidebar hides pages a role can't use, **and** the server refuses those actions, so editing the browser doesn't get around it.
 
 ---
 
-## 🛠️ Tech stack
+## Tech stack
 
 | Part | Technology |
 |---|---|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS, lucide-react icons |
+| Frontend | React 19, TypeScript, Vite 6, Tailwind CSS 4, lucide-react |
 | Offline | vite-plugin-pwa (Workbox service worker), Dexie (IndexedDB) |
-| Backend | Node.js, Express 5 |
-| Database | MongoDB Atlas, Mongoose |
-| Security | JWT login tokens, bcrypt password hashing, Helmet, CORS, rate limiting |
-| QR codes | `qrcode`, `jsqr`, `sharp` |
+| Live updates | Socket.IO |
+| Backend | Node.js 24, Express 5 |
+| Database | MongoDB Atlas, Mongoose 8 |
+| Security | JWT, bcrypt, Helmet, CORS allow-list, rate limiting, Content-Security-Policy |
+| Files and email | Cloudinary (menu photos), Brevo or Google Apps Script (admin email code) |
+| QR | `qrcode`, `jsqr`, `sharp` |
 | Hosting | Vercel (frontend), Render (backend), MongoDB Atlas (database) |
 
 ---
 
-## 🧠 How the system works
+## Architecture
 
 ```
-  Customer phone ──scan table QR──►  Vercel (frontend)  ◄──── Staff laptop / tablet
-                                          │
-                                          ▼  HTTPS + login token
-                                   Render (backend API)
-                                          │
-                                          ▼
-                                   MongoDB Atlas (database)
+ Customer phone ─ table QR / online order / tracking ─┐
+ Rider phone ─ rider app ─────────────────────────────┤
+ Staff laptop / tablet ───────────────────────────────┤
+                                                      ▼
+                                       Vercel (frontend, PWA)
+                                                      │  HTTPS + login token, WebSocket
+                                                      ▼
+                                       Render (backend API)  ◄── fingerprint machines (/iclock)
+                                                      │
+                                                      ▼
+                                       MongoDB Atlas (database)
 ```
 
-**How restaurants are kept separate:** when anyone logs in, the server gives them a **token** that says which restaurant they belong to. For every request, the server reads the restaurant from that token, **never** from what the browser sends. So restaurant A can never read or change restaurant B's data.
+**How restaurants are kept apart:** at login the server gives a **token** that says which restaurant (and which staff member) it belongs to. Every request reads the restaurant from that token, never from what the browser sends, and every record is checked to belong to that restaurant. Live updates are sent only to that restaurant's room.
 
 ---
 
-## 📁 Folder structure
+## Folder structure
 
 ```
-New - Resturant-Management-System/
-├── backend/
-│   ├── index.js              # Server + most API routes
-│   ├── connectDb.js          # MongoDB connection
-│   ├── seedAdmin.js          # Creates the first admin account (run once)
-│   ├── models/               # Database tables (Mongoose schemas)
-│   │   ├── login.js          #   restaurant accounts
-│   │   ├── loginStaff.js     #   staff accounts
-│   │   ├── menu.js, table.js, createOrder.js, bill.js, stock.js
-│   │   ├── loyalty.js, QrConfig.js
-│   │   ├── waiterCall.js     #   "Call Waiter" notifications
-│   │   └── idempotencyKey.js #   stops duplicate orders when syncing offline data
-│   ├── routes/
-│   │   ├── publicMenu.js     # customer QR page (no login)
-│   │   ├── tableQr.js        # generates table QR codes
-│   │   ├── notifications.js  # waiter calls for staff
-│   │   ├── qr.js             # payment QR (Fonepay)
-│   │   └── loyalty.js
-│   └── utils/
-│       ├── auth.js           # login token check
-│       ├── password.js       # password hashing
-│       ├── subscription.js   # subscription days check
-│       ├── idempotency.js    # duplicate protection
-│       └── fonepayDynamicQr.js
-│
-└── frontend/
-    ├── public/               # logo + app icons
-    ├── vercel.json           # makes /scan/... links work on Vercel
-    ├── vite.config.ts        # build + PWA (offline) settings
-    └── src/
-        ├── main.tsx          # start point (customer page OR staff app)
-        ├── App.tsx           # login, sidebar, roles, pages
-        ├── offline/          # offline mode (local DB, sync, status pill)
-        └── components/       # all the pages
-            ├── CustomerMenu.tsx      # what customers see after scanning
-            ├── TableQrManager.tsx    # Settings → Table QR
-            ├── Notifications.tsx     # waiter calls
-            └── ... (orders, billing, kitchen, menu, stock, staff, settings)
+backend/
+├── index.js               # Express app: security setup, login, menu, orders, tables, bills, stock, staff, admin
+├── connectDb.js           # MongoDB connection
+├── seedAdmin.js           # Creates the first admin account (run once)
+├── models/                # Mongoose schemas
+│   ├── login.js, loginStaff.js        # restaurant and staff accounts
+│   ├── menu.js, table.js, createOrder.js, bill.js, stock.js, customerName.js
+│   ├── counter.js                      # IRD bill and credit-note numbers
+│   ├── loyalty.js, loyaltyProgram.js, QrConfig.js, restaurantFeatures.js
+│   ├── deliveryOrder.js, deliverySettings.js, deliveryMenuExtra.js, rider.js
+│   ├── attendance*.js                  # attendance, devices, logs, settings
+│   ├── waiterCall.js, adminOtp.js, idempotencyKey.js
+├── routes/
+│   ├── publicMenu.js      # customer QR menu + call waiter (no login)
+│   ├── deliveryOnline.js  # online ordering + tracking (no login)
+│   ├── riderApp.js        # rider app (rider login)
+│   ├── delivery.js        # delivery hub for staff
+│   ├── attendance.js, iclock.js       # attendance + fingerprint machines
+│   ├── loyalty.js, qr.js, tableQr.js, notifications.js, features.js, menuImage.js
+├── services/              # attendance and fingerprint device helpers
+└── utils/                 # auth, passwords, bill numbers, Nepali dates, realtime, payment QR, idempotency …
+
+frontend/
+├── index.html
+├── vercel.json            # SPA routing + security headers (CSP, HSTS …)
+├── vite.config.ts         # build + PWA settings
+├── public/                # logo, app icons, robots.txt, sitemap.xml
+└── src/
+    ├── main.tsx           # start: staff app, QR menu (/scan), online order (/order), tracking (/track), rider app (/rider)
+    ├── App.tsx            # login, sidebar, roles, pages
+    ├── components/        # pages (orders, billing, kitchen, menu, stock, staff, settings, reports …)
+    │   └── delivery/      # delivery hub, online order, tracking, rider app
+    ├── delivery/          # shared delivery code (sockets, maps, pay QR)
+    ├── offline/           # offline mode (local DB, sync, status banner)
+    └── utils/             # receipt printing, Nepali dates
 ```
 
 ---
 
-## 💻 Run it on your computer
+## Run locally
 
-### What you need
-- [Node.js](https://nodejs.org/) **version 22 or newer**
-- A free [MongoDB Atlas](https://www.mongodb.com/atlas) database
-- [Git](https://git-scm.com/)
+**You need:** Node.js 22 or newer (Render uses 24), Git, and a MongoDB Atlas database (a free one is fine for testing).
 
-### 1. Download the code
+### 1. Get the code
 
 ```bash
 git clone https://github.com/cornortech/RMS.git
 cd RMS
 ```
 
-### 2. Start the backend
+### 2. Backend
 
 ```bash
 cd backend
 npm install
 ```
 
-Copy `backend/.env.example` to a new file called `backend/.env` and fill it in (see [Environment variables](#-environment-variables)). Then:
+Create `backend/.env` (see [Environment variables](#environment-variables)), then:
 
 ```bash
 npm start
 ```
 
-You should see:
+You should see `Database Connected Successfully` and `RMS server running on port 5000`. Open <http://localhost:5000/health>; it should show `"status":"ok"` and `"database":"connected"`.
 
-```
-✅ Database Connected Successfully.
-✅ RMS server running on port 5000
-```
+### 3. Frontend
 
-Check it at <http://localhost:5000/health>. It should show `{"status":"ok"}`.
-
-### 3. Start the frontend
-
-Open a **second** terminal:
+In a second terminal:
 
 ```bash
 cd frontend
 npm install
 ```
 
-Copy `frontend/.env.example` to `frontend/.env`:
+Create `frontend/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5000
@@ -247,28 +256,36 @@ npm run dev
 
 Open <http://localhost:3000>.
 
-> **Testing offline mode or the service worker?** `npm run dev` doesn't include them. Use:
-> ```bash
-> npx vite build
-> npx vite preview --port 3000
-> ```
+**Testing offline mode or the installed app?** `npm run dev` doesn't include the service worker. Use:
+
+```bash
+npm run build
+npm run preview
+```
+
+**Check the code:** `npm run lint` (TypeScript check).
 
 ---
 
-## 🔑 Environment variables
+## Environment variables
 
 ### Backend (`backend/.env` locally, **Environment** tab on Render)
 
-| Name | Required | Example | What it does |
+| Name | Needed | Example | Purpose |
 |---|---|---|---|
-| `MONGODB_URI` | ✅ | `mongodb+srv://user:pass@cluster0.xxx.mongodb.net/rms` | Database connection |
-| `JWT_SECRET` | ✅ | 96 random characters | Signs login tokens. **At least 32 characters.** |
-| `ALLOWED_ORIGINS` | ✅ | `https://rms-seven-neon.vercel.app` | Websites allowed to use the API (comma separated) |
-| `PUBLIC_APP_URL` | ✅ | `https://rms-seven-neon.vercel.app` | Address put inside table QR codes |
-| `NODE_ENV` | ✅ in production | `production` | Hides internal error details |
-| `ENFORCE_SUBSCRIPTION` | optional | `true` | Blocks restaurants whose days ran out |
-| `PORT` | optional | `5000` | **Don't set on Render** (Render sets it) |
-| `ADMIN_ID`, `ADMIN_PASSWORD` | only for `seedAdmin.js` | | First admin login |
+| `MONGODB_URI` | yes | `mongodb+srv://user:pass@cluster0.xxx.mongodb.net/rms` | Database connection |
+| `JWT_SECRET` | yes | 96 random characters | Signs login tokens. At least 32 characters |
+| `ALLOWED_ORIGINS` | yes | `https://atithi.cornortech.com,https://rms-seven-neon.vercel.app` | Websites allowed to use the API (comma separated, `https://`, no `/` at the end) |
+| `PUBLIC_APP_URL` | yes | `https://atithi.cornortech.com` | Address put inside table QR, online-order and rider links |
+| `NODE_ENV` | yes, in production | `production` | Hides internal error details |
+| `ADMIN_OTP_EMAIL` | yes | `you@example.com` | Where the admin login code is sent |
+| `BREVO_API_KEY`, `MAIL_FROM` | one email option | | Send the admin code with Brevo |
+| `GAS_URL`, `GAS_SECRET` | one email option | | Send the admin code with Google Apps Script (used instead of Brevo when set) |
+| `ADMIN_OTP_OFF` | emergency only | `false` | `true` skips the admin email code. Keep it `false` |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | optional | | Menu photos. Without them, photo upload is off |
+| `ENFORCE_SUBSCRIPTION` | optional | `true` | Blocks restaurants whose days have run out |
+| `PORT` | optional | `5000` | Don't set it on Render (Render sets it) |
+| `ADMIN_ID`, `ADMIN_PASSWORD` | only for `seedAdmin.js` | | First admin login. Remove the password afterwards |
 
 Make a strong `JWT_SECRET`:
 
@@ -278,192 +295,232 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ### Frontend (`frontend/.env` locally, **Environment Variables** on Vercel)
 
-| Name | Example | What it does |
+| Name | Example | Purpose |
 |---|---|---|
 | `VITE_API_URL` | `https://rms-elhj.onrender.com` | Backend address (no `/` at the end) |
+| `VITE_GOOGLE_MAPS_KEY` | optional | Shows maps in delivery tracking. Without it, map links open Google Maps |
 
-> ⚠️ `.env` files contain passwords. They must **never** be pushed to GitHub. `.gitignore` already blocks them.
+> `.env` files contain passwords. **Never** push them to GitHub. `.gitignore` blocks them; check with `git status` before every commit.
+>
+> If you change the backend address, also change it in the `Content-Security-Policy` line in `frontend/vercel.json` (`connect-src`), or the app can't reach the API.
 
 ---
 
-## 👑 Create the first admin account
+## First admin account
 
 Do this **once**, for a new database.
 
-1. Add these to `backend/.env`:
+1. Add to `backend/.env`:
    ```env
    ADMIN_ID=cornortech-admin
    ADMIN_PASSWORD=choose-a-long-password-here
    ```
-   The password must be **at least 12 characters**.
+   The password must be at least 12 characters.
 2. Run:
    ```bash
    cd backend
    node seedAdmin.js
    ```
-3. Log in with restaurant name **`Admin`**, your `ADMIN_ID`, and your `ADMIN_PASSWORD`.
-4. Remove `ADMIN_PASSWORD` from `.env` afterwards.
+3. Log in with restaurant name **`Admin`**, your `ADMIN_ID` and password. A **6-digit code** is emailed to `ADMIN_OTP_EMAIL`; enter it to finish logging in.
+4. Remove `ADMIN_PASSWORD` from `.env`.
 
-From the Admin dashboard you can create restaurant accounts. Each restaurant then logs in, and its Manager creates staff in **Manage Staff**.
+From the Admin dashboard, create restaurant accounts. Each restaurant logs in, and its Manager adds staff in **Manage Staff**.
 
 ---
 
-## 🚀 Deploy to production
+## Deploy to production
 
-Always deploy the **backend first**, then the frontend.
+Deploy the **backend first**, then the frontend.
 
 ### 1. Database: MongoDB Atlas
-1. Create a cluster and a database user.
-2. **Network Access** → **Allow access from anywhere** (`0.0.0.0/0`), because Render's IP changes.
-3. Copy the connection string for `MONGODB_URI`.
+1. Create a cluster and a database user with a **long random password**.
+2. **Network Access** → allow `0.0.0.0/0` (Render's IP address changes).
+3. Turn on **backups**.
+4. Copy the connection string for `MONGODB_URI`.
 
 ### 2. Backend: Render
-1. **New → Web Service** → pick the GitHub repo.
-2. Settings:
-   | Setting | Value |
-   |---|---|
-   | Root Directory | `backend` |
-   | Build Command | `npm install` |
-   | Start Command | `npm start` |
-3. Add the backend environment variables from the table above. Use `NODE_ENV=production`.
-4. After deploying, open `https://YOUR-BACKEND.onrender.com/health` → `{"status":"ok"}`.
+1. **New → Web Service** → choose the GitHub repo.
+2. Settings: Root Directory `backend`, Build Command `npm install`, Start Command `npm start`.
+3. Add the backend environment variables. Use `NODE_ENV=production`.
+4. **Health Check Path:** `/health`. Render then restarts the server if the database connection breaks.
+5. After deploying, open `https://YOUR-BACKEND.onrender.com/health` and check for `"database":"connected"`.
 
-> 💡 Render's **free** plan sleeps after 15 minutes, and the first request then takes about 50 seconds. For real restaurants, use the **Starter** plan.
+> Render's **free** plan sleeps after 15 minutes without visitors; waking takes about a minute. For live restaurants use a **paid** instance, or at least ping `/health` every 10 minutes with an uptime monitor.
 
 ### 3. Frontend: Vercel
-1. **Add New → Project** → pick the repo.
-2. Settings:
-   | Setting | Value |
-   |---|---|
-   | Root Directory | `frontend` |
-   | Framework | Vite |
-   | Build Command | `npx vite build` |
-   | Output Directory | `dist` |
-3. Environment variable: `VITE_API_URL=https://YOUR-BACKEND.onrender.com`
+1. **Add New → Project** → choose the repo.
+2. Settings: Root Directory `frontend`, Framework **Vite**, Build Command `npm run build`, Output Directory `dist`.
+3. Environment variable: `VITE_API_URL=https://YOUR-BACKEND.onrender.com`.
 4. Deploy.
 
 ### 4. Connect them
-On Render, set `ALLOWED_ORIGINS` and `PUBLIC_APP_URL` to your Vercel address (with `https://`, no `/` at the end).
+On Render, set `ALLOWED_ORIGINS` and `PUBLIC_APP_URL` to your website address(es). Add **every** address people use (for example both the `vercel.app` address and your own domain).
 
-### 5. Custom domain (recommended before printing QR codes)
-The website address is printed **inside every table QR**. Add your final domain in Vercel → **Settings → Domains** *before* printing QR codes, then update `ALLOWED_ORIGINS` and `PUBLIC_APP_URL`.
+### 5. Custom domain
+The website address is printed **inside every table QR**. Add your final domain in Vercel → **Settings → Domains** before printing QR codes, then update `ALLOWED_ORIGINS` and `PUBLIC_APP_URL`.
 
 ---
 
-## 📱 Table QR menu & Call Waiter
+## Table QR menu and Call Waiter
 
 1. Add tables on the **Tables** page.
-2. Go to **Settings → Table QR**. One QR per table appears automatically.
-3. **Download** or **Print all**, and place each QR on its table.
-4. A customer scans the QR and sees:
-   - **View Menu**: this restaurant's available items, by category, with search
-   - **Call Waiter**: sends a notification to staff
-5. Staff see calls on the **Notifications** page and press **Attended**.
+2. Open **Settings → Table QR**. One QR per table appears.
+3. **Download** or **Print all**, and put each QR on its table.
+4. A customer scans it and sees **View Menu** and **Call Waiter**.
+5. Staff see calls on **Notifications** and press **Attended**.
 
-The QR link looks like `https://your-site/scan/<restaurant>/<table>`. The server checks that the table belongs to that restaurant before showing anything.
+QR links look like `https://your-site/scan/<restaurant>/<table>`. The server checks the table belongs to that restaurant before showing anything.
 
 ---
 
-## 📴 Offline mode
+## Online delivery and riders
+
+1. **Delivery → Settings**: open or close online ordering, choose cash on delivery and/or online payment, set delivery areas and charges, the minimum order, free delivery above an amount, and the restaurant location.
+2. Share the **online order link** (`https://your-site/order/<restaurant>`) on Facebook, WhatsApp or Google.
+3. Customers order and get a **tracking link** (`/track/<code>`) with live status.
+4. **Delivery → Riders**: add riders with a phone number and PIN. They open the **rider link** (`/rider/<restaurant>`) on their phone and log in.
+5. Delivery money is settled in **Delivery Bills**.
+
+---
+
+## Fingerprint attendance
+
+1. **Attendance → Devices**: add the machine's **serial number**.
+2. On the machine open **Menu → Comm. → Cloud Server Setting** (some models call it **ADMS**) and enter the **server address, port and HTTPS** exactly as shown on **Attendance → Devices**.
+3. **Attendance → Devices**: link each staff member to their **user ID on the machine**.
+4. Scans appear in **Attendance**. Manual entries, reports and Excel export are on the same page.
+
+Only machines whose serial number is registered are accepted.
+
+---
+
+## Offline mode
 
 | Works offline | Needs internet |
 |---|---|
 | Create orders, change order status | Logging in |
-| Create bills, pay pending bills | Menu, tables, staff, stock, settings changes |
-| Loyalty points | Customer QR menu & Call Waiter |
-| View menu, tables, orders, bills (last saved copy) | Orders created on *other* devices |
+| Create bills, pay pending bills | Menu, tables, staff, stock and settings changes |
+| Loyalty points | Customer QR menu, online orders, rider app |
+| View menu, tables, orders, bills (last saved copy) | Orders made on *other* devices |
 
-**Status pill (bottom-right):**
+**Status banner:**
 
-| Pill | Meaning |
+| Banner | Meaning |
 |---|---|
-| ⚫ Offline · N changes saved | No internet; work is saved on this device |
-| 🟡 Syncing… | Uploading saved work |
-| 🟢 All changes synced | Done |
-| 🟠 Log in again to sync | Login expired; log in and it continues |
-| 🔴 N changes could not sync | The server refused them; click to Retry or Discard |
+| Offline · N changes saved | No internet; work is saved on this device |
+| Syncing… | Uploading saved work |
+| All changes synced | Done |
+| Log in again to sync | Login expired; log in and syncing continues |
+| N changes could not sync | The server refused them; Retry or Discard |
 
-**Rules for staff:** log in while online, open the main pages once, and don't clear browser data while changes are unsynced.
-
-Offline mode needs **https** (or `localhost`).
+**For staff:** log in while online, open the main pages once a day, and never clear browser data while changes are waiting to sync. Offline mode needs **https** (or `localhost`).
 
 ---
 
-## 🔒 Security
+## Security
 
-- **Passwords** are hashed with bcrypt (never stored as plain text)
-- **Login tokens** (JWT) expire after 12 hours
-- **Every request** is checked: active account, active staff, correct restaurant, correct role
-- **Restaurant data is separated** on the server by the login token
-- **Rate limiting** on logins (10 failed attempts per 15 minutes) and on "Call Waiter"
-- **NoSQL-injection protection** (`sanitizeFilter`), strict CORS, Helmet security headers
-- **No internal errors** shown to users in production
-- **Duplicate protection** for offline sync (idempotency keys)
+- Passwords hashed with **bcrypt**; never stored or shown as plain text
+- **Login tokens** (JWT) expire after 24 hours; account, staff, restaurant and role are re-checked on **every** request
+- **Restaurant data is separated** on the server using the login token; every record is checked to belong to that restaurant
+- **Roles enforced on the server**, not only in the menu
+- **Admin login needs an email code**
+- **Rate limits** on logins (10 failed tries per 15 minutes), rider logins, online orders and Call Waiter
+- **NoSQL-injection protection** (`sanitizeFilter`), strict **CORS allow-list**, **Helmet** headers on the API
+- **Content-Security-Policy**, HSTS and other security headers on the website (`frontend/vercel.json`)
+- **Bills are never deleted**: cancelling gives a credit note (IRD rule)
+- **No internal error details** shown to users
+- **Duplicate protection** when offline work is synced (idempotency keys)
 
-### Security checklist before going live
-- [ ] `backend/.env` is **not** on GitHub
-- [ ] The admin password is **not** `123`, and is 12+ characters
+### Checklist before going live
+- [ ] No `.env` file is on GitHub, and no password is in the Git history (if one ever was, **change that password**)
+- [ ] The GitHub repository is **private**
 - [ ] `JWT_SECRET` is long and random
+- [ ] Admin password is 12+ characters, and `ADMIN_OTP_OFF=false`
 - [ ] `NODE_ENV=production` on Render
-- [ ] `ALLOWED_ORIGINS` only contains your real website
-- [ ] MongoDB Atlas backups are turned on
+- [ ] `ALLOWED_ORIGINS` only lists your real websites
+- [ ] MongoDB Atlas backups are on
+- [ ] `npm audit` shows no problems in `backend` and `frontend`
 
 ---
 
-## 🔌 API overview
+## API overview
 
-All routes start with `/api`. Everything except login and `/api/public/*` needs `Authorization: Bearer <token>`.
+All API routes start with `/api`. Everything needs `Authorization: Bearer <token>` except login, `/api/public/*`, `/api/online/*` and the rider-app login.
 
 | Area | Routes |
 |---|---|
-| Health | `GET /health` |
-| Login | `POST /auth/login`, `POST /auth/verify`, `POST /staff/login` |
-| Customer (public) | `GET /public/menu/:restaurantKey/:tableId`, `POST /public/call-waiter` |
-| Menu | `GET/POST /menu`, `PUT/DELETE /menu/:id` |
+| Health | `GET /health` (no `/api`) |
+| Login | `POST /auth/login`, `POST /auth/admin-otp/verify`, `POST /auth/admin-otp/resend`, `POST /auth/verify`, `POST /staff/login` |
+| Customer QR (public) | `GET /public/menu/:restaurantKey/:tableId`, `POST /public/call-waiter` |
+| Online order (public) | `GET /online/:restaurantKey/menu`, `POST /online/:restaurantKey/quote`, `POST /online/:restaurantKey/orders`, `GET /online/track/:token`, `POST /online/track/:token/cancel`, `GET /online/track/:token/pay-qr` |
+| Rider app | `POST /rider-app/login`, `GET /rider-app/me`, `GET /rider-app/me/orders`, `PATCH /rider-app/me/orders/:id/status`, `POST /rider-app/me/location` |
+| Menu | `GET/POST /menu`, `PUT/DELETE /menu/:id`, menu photos under `/menu` |
 | Orders | `GET/POST /orders`, `PUT/DELETE /orders/:id` |
 | Tables | `GET/POST /tables`, `PUT/DELETE /tables/:id` |
-| Bills | `GET/POST /bills`, `PATCH /bills/:id` |
+| Bills | `GET/POST /bills`, `PATCH /bills/:id`, `POST /bills/:id/cancel`, `GET /cancel-history` |
+| Customers | `POST /customers`, `GET /customers/:restaurantId`, `PUT/DELETE /customers/:id` |
 | Stock | `GET/POST /stocks`, `GET/PUT/DELETE /stocks/:id` |
-| Loyalty | `GET/POST /loyalty`, `PUT/DELETE /loyalty/:id`, `PATCH /loyalty/:id/points` |
+| Loyalty | `/loyalty` (members, programs, points) |
 | Payment QR | `GET /qr`, `POST /qr/upload`, `POST /qr/dynamic`, `PUT/DELETE /qr/:id` |
 | Table QR | `GET /table-qr` |
 | Notifications | `GET /notifications`, `PATCH /notifications/:id/attend`, `PATCH /notifications/attend-all`, `DELETE /notifications/attended` |
+| Delivery (staff) | `/delivery/*` (orders, riders, reports, settings) |
+| Attendance | `/attendance/*` (Manager only); machines use `/iclock` |
+| Features | `GET/PUT /features` |
 | Staff | `GET /staff/names`, `POST /staff/create`, `PUT/DELETE /staff/:id` |
 | Admin | `GET/POST /admin/users`, `PUT/DELETE /admin/users/:id` |
-| Subscription | `GET /restaurant/time` |
 
 ---
 
-## 🧯 Troubleshooting
+## Health check and monitoring
+
+`GET /health` (no login, no CORS limits, never cached):
+
+```json
+{ "status": "ok", "database": "connected", "uptimeSeconds": 5321 }
+```
+
+- `200` and `"database":"connected"`: all good
+- `503` and `"database":"disconnected"`: the server is running but can't reach MongoDB
+
+Use it for Render's **Health Check Path** and an uptime monitor (e.g. UptimeRobot, every 5–10 minutes). The app also uses it to decide when to sync offline work.
+
+---
+
+## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| "Unable to connect to authentication server" | Check `VITE_API_URL` on Vercel and that the backend `/health` works. Redeploy Vercel after changing it. |
-| Login works on one site but not another | Add that site to `ALLOWED_ORIGINS` on Render (with `https://`, no `/` at the end). |
-| Scanning a QR shows **404 NOT_FOUND** | `frontend/vercel.json` is missing or not pushed. Vercel's Root Directory must be `frontend`. |
-| QR page says "Could not load the menu" | Check `ALLOWED_ORIGINS` and `VITE_API_URL`. |
-| QR link points to `localhost` | Set `PUBLIC_APP_URL` on Render, then click **Refresh** on Settings → Table QR. |
-| First request is very slow | Render's free plan was asleep. Upgrade to Starter. |
-| "Your subscription has expired" | The Admin must add days to that restaurant in the Admin dashboard. |
-| Backend crashes with `Cannot find module` | A file is missing or misnamed (check for `.txt` at the end). |
-| Any 500 error | Look at **Render → Logs** for the red 🔴 line. |
+| "Unable to connect" / "Origin not allowed" | Add the exact website address to `ALLOWED_ORIGINS` on Render (`https://`, no `/` at the end), and check `VITE_API_URL` on Vercel. Redeploy Vercel after changing it |
+| App shows **offline** in the morning | Render's free plan was asleep. Use a paid instance or an uptime monitor on `/health` |
+| `/health` shows `"database":"disconnected"` | Check MongoDB Atlas is running, the password in `MONGODB_URI` is right, and Network Access allows `0.0.0.0/0` |
+| Blank page after a deploy | Delete `frontend/node_modules`, run `npm install`, build again. React and React-DOM versions must match |
+| Page loads but some images or maps don't | A site is missing from the `Content-Security-Policy` in `frontend/vercel.json` |
+| Scanning a QR shows **404** | `frontend/vercel.json` missing or not pushed; Vercel Root Directory must be `frontend` |
+| QR link points to `localhost` | Set `PUBLIC_APP_URL` on Render, then **Refresh** in Settings → Table QR |
+| "Your subscription has expired" | The Admin adds days to that restaurant in the Admin dashboard |
+| Admin email code doesn't arrive | Check `ADMIN_OTP_EMAIL` and the Brevo (or Google Apps Script) settings |
+| Any 500 error | Look at **Render → Logs** for the `UNHANDLED ERROR` line |
 
 ---
 
-## 🔄 Updating the live system
+## Updating the live system
 
 ```bash
+git status            # make sure no .env file is listed
 git add .
 git commit -m "Describe your change"
 git push
 ```
 
-Render and Vercel update automatically. If you change a variable on Vercel, click **Redeploy**.
+Render and Vercel update automatically. After changing a variable on Vercel, click **Redeploy**.
+
+Every few weeks, run `npm audit` in `backend` and `frontend` and apply safe fixes with `npm audit fix`.
 
 ---
 
 <div align="center">
 
-Made with ❤️ in Nepal by **CornorTech Pvt. Ltd.**
+Made in Nepal by **CornorTech Pvt. Ltd.**
 
 </div>

@@ -11,7 +11,7 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
 // The token only says WHO you are. Name, role and active status are re-read from
 // the database on every request, so deactivated users lose access immediately.
 function signToken({ kind, uid, sid }) {
-  return jwt.sign({ kind, uid, sid }, JWT_SECRET, { expiresIn: "12h" });
+  return jwt.sign({ kind, uid, sid }, JWT_SECRET, { expiresIn: "24h" }); // one login lasts the whole business day
 }
 
 async function requireAuth(req, res, next) {

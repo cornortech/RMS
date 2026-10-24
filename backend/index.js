@@ -50,6 +50,20 @@ app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet());
 
+// Health check for the app's offline sync, Render and uptime monitors.
+// It is placed BEFORE the CORS check so any monitor or website can read it
+// (it shows no private data). It also reports whether the database is connected.
+app.get("/health", (req, res) => {
+    const dbUp = mongoose.connection.readyState === 1;
+    res.set("Cache-Control", "no-store");
+    res.set("Access-Control-Allow-Origin", "*");
+    res.status(dbUp ? 200 : 503).json({
+        status: dbUp ? "ok" : "error",
+        database: dbUp ? "connected" : "disconnected",
+        uptimeSeconds: Math.round(process.uptime()),
+    });
+});
+
 // Only these websites may call the API from a browser (set ALLOWED_ORIGINS in .env).
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://rms-seven-neon.vercel.app,http://localhost:3000")
     .split(",").map((o) => o.trim()).filter(Boolean);
@@ -240,7 +254,7 @@ const syncRemainingTime = async (restaurant) => {
 // ==========================================
 // PUBLIC ROUTES (no token needed)
 // ==========================================
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+
 
 // Fingerprint machines send their scans here (no login - they are checked by serial number)
 app.use("/iclock", require("./routes/iclock"));
