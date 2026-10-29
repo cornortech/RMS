@@ -874,6 +874,15 @@ app.post("/api/orders", requireAuth, async (req, res) => {
             autoServed: onlyDrinks,
             paymentStatus: getValue(formData.paymentStatus, "Unpaid")
         });
+        
+        // Kitchen pop-up (only shown when "Kitchen order notifications" is ON in Settings)
+        if (!onlyDrinks) {
+            realtime.emitToRestaurant(restaurantId, "kitchen:order", {
+                id: String(newOrder._id),
+                tableNumber: newOrder.tableNumber,
+                itemCount: orderItems.reduce((sum, i) => sum + i.quantity, 0),
+            });
+        }
 
         return res.status(201).json({
             success: true,

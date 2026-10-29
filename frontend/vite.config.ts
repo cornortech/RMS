@@ -33,6 +33,8 @@ export default defineConfig(() => {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: '/index.html',
           cleanupOutdatedCaches: true,
+                    // Opens the RMS when a pop-up notification is clicked (public/notify-sw.js)
+          importScripts: ['notify-sw.js'],
         },
       }),
     ],

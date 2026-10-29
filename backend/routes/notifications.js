@@ -7,6 +7,11 @@ const express = require("express");
 const mongoose = require("mongoose");
 const WaiterCall = require("../models/waiterCall");
 
+const realtime = require("../utils/realtime");
+
+// Every open RMS screen of this restaurant updates its "Notifications" count
+const countChanged = (req) => realtime.emitToRestaurant(req.auth.restaurantId, "waiter:update", {});
+
 const router = express.Router();
 
 // ---------------------------------------------------------------------
@@ -50,6 +55,7 @@ router.patch("/:id/attend", async (req, res) => {
     );
 
     if (!call) return res.status(404).json({ success: false, message: "Not found." });
+    countChanged(req);
     return res.json({ success: true, data: call });
   } catch (err) {
     return res.status(500).json({ success: false, message: "Could not update notification." });
@@ -66,6 +72,7 @@ router.patch("/attend-all", async (req, res) => {
       { restaurantId: req.auth.restaurantId, status: "Pending" },
       { status: "Attended", attendedBy: who, attendedAt: new Date() }
     );
+    countChanged(req);
     return res.json({ success: true, updated: result.modifiedCount });
   } catch (err) {
     return res.status(500).json({ success: false, message: "Could not update notifications." });

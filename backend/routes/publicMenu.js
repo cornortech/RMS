@@ -15,6 +15,7 @@ const RestaurantUser = require("../models/login");
 const Table = require("../models/table");
 const Menu = require("../models/menu");
 const WaiterCall = require("../models/waiterCall");
+const realtime = require("../utils/realtime");
 
 const router = express.Router();
 
@@ -119,11 +120,14 @@ router.post("/call-waiter", callLimiter, async (req, res) => {
       return res.json({ success: true, alreadyCalled: true, message: "A waiter has already been called. Please wait." });
     }
 
-    await WaiterCall.create({
+    const call = await WaiterCall.create({
       restaurantId: restaurant.id,
       tableId: String(table._id),
       tableName: table.tableName,
     });
+
+    // Tell this restaurant's open RMS screens right away (sound, pop-up and sidebar count)
+    realtime.emitToRestaurant(restaurant.id, "waiter:call", { id: String(call._id), tableName: call.tableName });
 
     return res.status(201).json({ success: true, message: "A waiter is on the way!" });
   } catch (err) {

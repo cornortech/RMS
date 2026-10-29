@@ -10,6 +10,8 @@ const restaurantFeaturesSchema = new mongoose.Schema(
     // ON → Create Bill starts every bill with this VAT % (cashier can still change it on one bill)
     vatEnabled: { type: Boolean, default: false },
     vatRate: { type: Number, default: 13, min: 0, max: 100 },
+        // ON → Kitchen Staff and Managers get a pop-up + sound for every new kitchen order
+    kitchenAlerts: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -31,9 +31,11 @@ import RESTAURANTSettings from './components/Setting';
 import OrdersPage from './components/Orders';
 import OfflineBanner from './offline/OfflineBanner';
 import { hasUnsyncedChanges } from './offline/offlineFetch';
-   import Notifications from './components/Notifications';
-   import DeliveryHub from './components/delivery/DeliveryHub';
+import Notifications from './components/Notifications';
+import DeliveryHub from './components/delivery/DeliveryHub';
 import DeliveryAlerts from './components/delivery/DeliveryAlerts';
+import StaffAlerts from './components/StaffAlerts';
+import { useAlertCounts, badgeText } from './utils/alerts';
 import { toBS } from './utils/nepaliDate';
 
 const API_BASE_URL = `${(import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')}/api`;
@@ -414,6 +416,7 @@ function Sidebar({
 }: SidebarProps) {
   const compact = collapsed && !isMobile;
   const tone = ROLE_TONE[staffRole];
+    const alertCounts: Record<string, number> = useAlertCounts(); // new waiter calls / orders
 
   const groups = NAV_GROUPS
     .map((g) => ({ ...g, items: NAV_ITEMS.filter((i) => i.group === g.key && canAccess(i.view)) }))
@@ -472,6 +475,7 @@ function Sidebar({
                 const active = currentView === item.view;
                 const Icon = item.icon;
                 const label = labelFor(item);
+                const count = alertCounts[item.view] || 0;
                 return (
                   <li key={item.view}>
                     <button
@@ -497,7 +501,19 @@ function Sidebar({
                         }`}
                       />
                       {!compact && <span className="truncate">{label}</span>}
-                      {!compact && active && <ChevronRight className="ml-auto h-4 w-4 opacity-80" aria-hidden="true" />}
+                      {count > 0 && (
+                        <span
+                          aria-label={`${count} new`}
+                          className={
+                            compact
+                              ? 'absolute right-1.5 top-1 min-w-[18px] rounded-full bg-rose-500 px-1 py-0.5 text-center text-[9px] font-black leading-none text-white ring-2 ring-white'
+                              : `ml-auto min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-black leading-none ${active ? 'bg-white text-purple-700' : 'bg-rose-500 text-white'}`
+                          }
+                        >
+                          {badgeText(count)}
+                        </span>
+                      )}
+                      {!compact && active && <ChevronRight className={`${count > 0 ? 'ml-1' : 'ml-auto'} h-4 w-4 opacity-80`} aria-hidden="true" />}
                     </button>
                   </li>
                 );
@@ -884,6 +900,8 @@ export default function App() {
   const [sales] = useState<Sale[]>([]);
 const { lang, setLang } = useLang();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const alertCounts = useAlertCounts();
+  const alertTotal = alertCounts.notifications + alertCounts.delivery + alertCounts.kitchen;
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('sidebarCollapsed') === '1'; } catch { return false; }
   });
@@ -1287,13 +1305,18 @@ const { lang, setLang } = useLang();
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className={`md:hidden p-2.5 rounded-xl border border-purple-100 bg-white text-slate-600 hover:text-purple-700 hover:bg-purple-50 active:scale-[0.96] transition-all cursor-pointer ${FOCUS_RING}`}
+              className={`relative md:hidden p-2.5 rounded-xl border border-purple-100 bg-white text-slate-600 hover:text-purple-700 hover:bg-purple-50 active:scale-[0.96] transition-all cursor-pointer ${FOCUS_RING}`}
               id="mobile-menu-toggle"
               aria-label={lang === 'en' ? 'Open navigation menu' : 'नेभिगेसन मेनु खोल्नुहोस्'}
               aria-expanded={isMobileMenuOpen}
               aria-controls="mobile-drawer-overlay"
             >
               <Menu className="h-5 w-5" aria-hidden="true" />
+                            {alertTotal > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-rose-500 px-1 py-0.5 text-center text-[9px] font-black leading-none text-white ring-2 ring-white">
+                  {badgeText(alertTotal)}
+                </span>
+              )}
             </button>
 
             <button
@@ -1425,6 +1448,9 @@ const { lang, setLang } = useLang();
       <OfflineBanner />
 
       {canAccess('delivery') && <DeliveryAlerts currentView={currentView} onOpen={() => navigate('delivery')} />}
+        
+      {/* Waiter calls, kitchen orders, pop-ups and sidebar counts */}
+      <StaffAlerts lang={lang} currentView={currentView} canAccess={canAccess} onOpen={navigate} />
 
       {/* GLOBAL INVOICE MODAL */}
       {invoiceToView && (

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, GlassWater, CheckCircle2, AlertCircle, Percent } from 'lucide-react';
+import { Loader2, GlassWater, CheckCircle2, AlertCircle, Percent, ChefHat, Bell } from 'lucide-react';
+import { popupPermission, askPopupPermission, showPopup } from '../utils/alerts';
 
 // =====================================================================
 // SETTINGS → FEATURES   (on / off switches for this restaurant)
@@ -11,9 +12,10 @@ interface Features {
   skipBeverageKot: boolean;
   vatEnabled: boolean;
   vatRate: number;
+  kitchenAlerts: boolean;
 }
 
-const FALLBACK: Features = { skipBeverageKot: false, vatEnabled: false, vatRate: 13 };
+const FALLBACK: Features = { skipBeverageKot: false, vatEnabled: false, vatRate: 13, kitchenAlerts: false };
 
 export default function FeatureSettings() {
   const [features, setFeatures] = useState<Features | null>(null);
@@ -66,7 +68,7 @@ export default function FeatureSettings() {
     }
   };
 
-  const toggle = (key: 'skipBeverageKot' | 'vatEnabled') => save({ [key]: !features?.[key] });
+  const toggle = (key: 'skipBeverageKot' | 'vatEnabled' | 'kitchenAlerts') => save({ [key]: !features?.[key] });
 
   const saveVatRate = () => {
     const rate = Number(vatInput);
@@ -131,6 +133,17 @@ export default function FeatureSettings() {
         </div>
       </FeatureRow>
 
+            <FeatureRow
+        icon={ChefHat}
+        title="Kitchen order notifications"
+        description="When ON: Kitchen Staff and Managers get a sound, a message and a pop-up for every new kitchen order, on any page — even when the browser is minimized. Orders with only beverages (when they skip the kitchen) don't notify."
+        on={features.kitchenAlerts}
+        disabled={saving}
+        onToggle={() => toggle('kitchenAlerts')}
+      />
+
+      <DevicePopups />
+
       {message && (
         <p
           className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
@@ -141,6 +154,51 @@ export default function FeatureSettings() {
           {message.text}
         </p>
       )}
+    </div>
+  );
+}
+
+// Pop-ups are allowed per browser, so this row is about THIS computer / phone only
+function DevicePopups() {
+  const [permission, setPermission] = useState(popupPermission());
+  const turnOn = async () => setPermission(await askPopupPermission());
+  const test = () =>
+    showPopup({ title: 'Atithi RMS', body: 'Pop-up notifications are working on this device.', tag: 'rms-test' });
+
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${permission === 'granted' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+        <Bell className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-slate-900">Pop-up notifications on this device</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          New orders and waiter calls show as a pop-up from Windows, Mac or Android when the RMS is minimized. Each computer and phone has to allow it once.
+        </p>
+        {permission === 'granted' && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Allowed</span>
+            <button type="button" onClick={test} className="cursor-pointer rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-50">
+              Send a test pop-up
+            </button>
+          </div>
+        )}
+        {permission === 'default' && (
+          <button type="button" onClick={turnOn} className="mt-2 cursor-pointer rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-500">
+            Allow pop-ups on this device
+          </button>
+        )}
+        {permission === 'denied' && (
+          <p className="mt-2 text-xs font-semibold text-rose-700">
+            Blocked in this browser. Click the lock icon left of the website address → Notifications → Allow, then reload the page.
+          </p>
+        )}
+        {permission === 'unsupported' && (
+          <p className="mt-2 text-xs font-semibold text-amber-700">
+            This browser can't show pop-ups. On iPhone, first add the RMS to the Home Screen (Share → Add to Home Screen) and open it from there.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

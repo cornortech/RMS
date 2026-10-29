@@ -16,6 +16,7 @@ const DeliveryMenuExtra = require("../models/deliveryMenuExtra");
 const DeliverySetting = require("../models/deliverySettings");
 const DeliveryOrder = require("../models/deliveryOrder");
 const Rider = require("../models/rider");
+const realtime = require("./realtime");
 
 const FINAL = ["Delivered", "Cancelled"];
 const ACTIVE = ["Pending", "Confirmed", "Preparing", "Ready", "Assigned", "OutForDelivery"];
@@ -254,7 +255,7 @@ async function createKitchenTicket(o, { skipKitchen = false } = {}) {
   try {
     const exists = await Order.exists({ restaurantId: o.restaurantId, tableNumber: kitchenTable(o) });
     if (exists) return;
-    await Order.create({
+    const ticket = await Order.create({
       restaurantId: o.restaurantId,
       customerName: `${o.customer.name} (Online)`,
       customerPhone: o.customer.phone || "",
@@ -275,6 +276,14 @@ async function createKitchenTicket(o, { skipKitchen = false } = {}) {
       // "Unpaid" = no bill made yet. The bill is made in Create Bill once the order is Ready.
       paymentStatus: "Unpaid",
     });
+    // Kitchen pop-up (only shown when "Kitchen order notifications" is ON in Settings)
+    if (!skipKitchen && ticket.orderStatus === "Pending") {
+      realtime.emitToRestaurant(o.restaurantId, "kitchen:order", {
+        id: String(ticket._id),
+        tableNumber: ticket.tableNumber,
+        itemCount: ticket.items.reduce((sum, i) => sum + i.quantity, 0),
+      });
+    }
   } catch (e) {
     console.error("⚠️ Could not create kitchen ticket:", e.message);
   }

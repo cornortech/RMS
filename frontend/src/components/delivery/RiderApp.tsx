@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bike, Phone, MapPin, Navigation, Loader2, LogOut, KeyRound, Check, Radio, PackageCheck, Truck, AlertCircle, Wallet, StickyNote } from 'lucide-react';
+import { Bike, Phone, MapPin, Navigation, Loader2, LogOut, KeyRound, Check, Radio, PackageCheck, Truck, AlertCircle, Wallet, StickyNote, Bell } from 'lucide-react';
 import { API_BASE, money, mapsLink, playDing, useSocket, timeAgo, STATUS_META, type DStatus } from '../../delivery/shared';
 import { Styles } from './OnlineOrder';
+import { showPopup, pageIsHidden, setAppIconBadge, popupPermission, askPopupPermission } from '../../utils/alerts';
 
 // =====================================================================
 // RIDER APP (phone web page)      address:  /rider/<restaurantKey>
@@ -31,6 +32,8 @@ export default function RiderApp() {
   const [busyId, setBusyId] = useState('');
   const [toast, setToast] = useState('');
   const [gps, setGps] = useState<'off' | 'on' | 'denied'>('off');
+    const [popups, setPopups] = useState(popupPermission());
+  const knownIds = useRef<Set<string> | null>(null); // orders already announced (null = first load)
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3500); };
   const logout = useCallback(() => { localStorage.removeItem(tokenKey); setToken(''); setMe(null); }, [tokenKey]);
@@ -49,11 +52,28 @@ export default function RiderApp() {
       const [m, o] = await Promise.all([call('/me'), call('/me/orders')]);
       setMe(m.rider); setRestaurant(m.restaurantName);
       setActive(o.active); setDone(o.deliveredToday); setCash(o.cashCollectedToday);
+
+      // A new order was assigned to me → sound + message, and a pop-up if the rider is in another app
+      const activeOrders: RiderOrder[] = o.active;
+      const fresh = knownIds.current ? activeOrders.filter((x) => !knownIds.current!.has(x._id)) : [];
+      knownIds.current = new Set(activeOrders.map((x) => x._id));
+      if (fresh.length) {
+        playDing();
+        flash(`New order ${fresh.map((x) => x.orderNo).join(', ')}`);
+        if (pageIsHidden()) {
+          fresh.forEach((x) => showPopup({
+            title: 'New delivery order',
+            body: `${x.orderNo} · ${x.customer.area || x.customer.address} · ${money(x.totalAmount)}`,
+            tag: `rider-${x._id}`,
+          }));
+        }
+      }
+      setAppIconBadge(activeOrders.length);
     } catch { /* shown by the login screen if the session ended */ }
   }, [token, call]);
 
   useEffect(() => { load(); }, [load]);
-  const connected = useSocket(token ? { kind: 'rider', token } : null, { 'delivery:assigned': () => { playDing(); load(); } });
+  const connected = useSocket(token ? { kind: 'rider', token } : null, { 'delivery:assigned': () => load() });
   useEffect(() => { if (!token) return; const id = setInterval(load, connected ? 40000 : 12000); return () => clearInterval(id); }, [token, connected, load]);
 
   /* ---------- share GPS while there are active orders ---------- */
@@ -116,6 +136,14 @@ export default function RiderApp() {
             <div key={s.l} className="rounded-2xl bg-white p-3 text-center shadow-lg shadow-purple-500/10 ring-1 ring-purple-100"><p className={`font-display text-xl font-bold ${s.c}`}>{s.v}</p><p className="text-[11px] font-semibold text-slate-500">{s.l}</p></div>
           ))}
         </div>
+
+                {popups === 'default' && (
+          <div className="flex items-center gap-3 rounded-2xl bg-purple-50 p-3 ring-1 ring-purple-200">
+            <Bell className="h-5 w-5 shrink-0 text-purple-600" />
+            <p className="flex-1 text-xs font-semibold text-purple-900">Get a pop-up when a new order is assigned to you, even when you are in another app.</p>
+            <button onClick={async () => setPopups(await askPopupPermission())} className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-bold text-white">Turn on</button>
+          </div>
+        )}
 
         {gps === 'denied' && <p className="flex items-start gap-2 rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800 ring-1 ring-amber-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> Location is blocked. Allow location in your browser so customers can see you on the map.</p>}
 
