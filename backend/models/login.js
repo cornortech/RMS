@@ -10,6 +10,9 @@ const restaurantUserSchema = new mongoose.Schema(
     location: { type: String, required: true, trim: true },
     PanOrVat: { type: String, trim: true },
     isActive: { type: Boolean, default: true },
+    // Why it was deactivated: "subscription" (days finished, automatic) or "manual" (by admin)
+    deactivatedReason: { type: String, default: null },
+    deactivatedAt: { type: Date, default: null },
     isAdmin: { type: Boolean, default: false },
     totalTime: { type: Number, default: 30 },
     remainingTime: { type: Number, default: 30 },

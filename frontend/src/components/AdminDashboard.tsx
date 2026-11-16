@@ -24,8 +24,10 @@ import {
   TimerReset,
   AlertTriangle,
   Users,
-  Sparkles
+  Sparkles,
+  History
 } from 'lucide-react';
+import ActivityLog from './ActivityLog'; // 📋 open / close log, IP, money collected
 
 // ============================================================
 // TYPES
@@ -52,6 +54,7 @@ interface RESTAURANTAccount {
   isAdmin?: boolean;  // used to detect the admin account
   totalTime?: number;     // subscription length, in days
   remainingTime?: number; // days left on the subscription
+  deactivatedReason?: string | null; // "subscription" = days finished (switched off automatically)
 }
 
 // Staff login account (saved in RESTAURANTStaff collection only)
@@ -155,6 +158,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [logFor, setLogFor] = useState(''); // 📋 restaurant shown in the Activity Log ('' = all)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Form States for Creating/Editing RESTAURANT Accounts
@@ -447,7 +451,7 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
       if (response.ok && data.success) {
         showNotice('success', `Added ${days} days to ${resto.RESTAURANTName || resto.restaurantName}.`);
         setRestaurants(prev => prev.map(item =>
-          item._id === resto._id ? normalizeRestaurant({ ...item, totalTime: newTotal, remainingTime: newRemaining }) : item
+          item._id === resto._id ? normalizeRestaurant({ ...item, ...(data.data || {}), totalTime: newTotal, remainingTime: newRemaining }) : item
         ));
       } else {
         showNotice('error', getServerMessage(data, response, 'Could not extend the subscription.'));
@@ -920,8 +924,21 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
                                 {resto.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                                 {resto.isActive ? t.active : t.inactive}
                               </span>
+                              {!resto.isActive && resto.deactivatedReason === 'subscription' && (
+                                <span className="mt-1 block text-[9px] font-bold uppercase tracking-wider text-rose-500">Subscription ended</span>
+                              )}
                             </td>
                             <td className="p-4 text-right space-x-2 whitespace-nowrap">
+                              <button
+                                onClick={() => {
+                                  setLogFor(resto.id);
+                                  setTimeout(() => document.getElementById('activity-log-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                }}
+                                title="View activity log"
+                                className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
+                              >
+                                <History className="h-3.5 w-3.5" />
+                              </button>
                               <button
                                 onClick={() => startEditMode(resto)}
                                 className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-xl transition-all cursor-pointer inline-flex items-center"
@@ -1166,6 +1183,9 @@ export default function AdminDashboard({ user, lang, onLogout }: AdminDashboardP
             </div>
           </div>
         </div>
+
+        {/* 📋 ACTIVITY & SESSION LOG — open / close times, IP, device, money collected */}
+        <ActivityLog focusId={logFor} onFocus={setLogFor} />
       </main>
 
       {/* ============================================================

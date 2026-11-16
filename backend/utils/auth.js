@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const RestaurantUser = require("../models/login");
 const RestaurantStaff = require("../models/loginStaff");
-const { isExpired, EXPIRED_MESSAGE } = require("./subscription");
+const { isExpired, EXPIRED_MESSAGE, daysLeft } = require("./subscription");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
@@ -34,6 +34,13 @@ async function requireAuth(req, res, next) {
 
     if (!restaurant || !restaurant.isActive) {
       return res.status(401).json({ success: false, message: "Account not found or deactivated." });
+    }
+
+    // ⏳ Subscription days finished → deactivate now and log out
+    const activity = require("../routes/activity");
+    if (!restaurant.isAdmin && activity.autoDeactivateOn() && daysLeft(restaurant) <= 0) {
+      await activity.deactivateForSubscription(restaurant, req);
+      return res.status(401).json({ success: false, code: "SUBSCRIPTION_EXPIRED", message: EXPIRED_MESSAGE });
     }
     
     if (isExpired(restaurant)) {

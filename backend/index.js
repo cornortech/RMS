@@ -28,6 +28,7 @@ const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
 const { deleteImage } = require("./utils/cloudinary");
 const RestaurantFeatures = require("./models/restaurantFeatures");
+const activity = require("./routes/activity"); // 📋 Activity & session log + auto-deactivate
 
 // 🥤 "No beverage in KOT" feature. Returns a function that says if an item is a beverage,
 // or null when the feature is OFF. Items are matched to the Menu by name (category "Beverage").
@@ -279,6 +280,7 @@ const publicUser = (r) => ({
     PanOrVat: r.PanOrVat,
     isActive: r.isActive,
     isAdmin: r.isAdmin,
+    deactivatedReason: r.deactivatedReason || null, // "subscription" = days finished (automatic)
     totalTime: r.totalTime,
     // Real days left, worked out from today's date (not the old saved number)
     remainingTime: Number.isFinite(daysLeft(r)) ? Math.max(0, daysLeft(r)) : r.remainingTime,
@@ -298,15 +300,37 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
         const fail = () => res.status(401).json({ success: false, message: "Invalid restaurant name, ID or password." });
 
         const restaurant = await RestaurantUser.findOne({ id }).select("+password");
-        if (!restaurant) return fail();
-       if (String(restaurant.restaurantName || "").trim().toLowerCase() !== restaurantName.toLowerCase()) return fail();
-        if (!(await verifyPassword(password, restaurant.password))) return fail();
+        if (!restaurant) {
+            await activity.logEvent(req, { id, restaurantName }, "login-failed", "Unknown login ID");
+            return fail();
+        }
+        if (String(restaurant.restaurantName || "").trim().toLowerCase() !== restaurantName.toLowerCase()) {
+            await activity.logEvent(req, restaurant, "login-failed", `Wrong restaurant name typed: "${restaurantName.slice(0, 60)}"`);
+            return fail();
+        }
+        if (!(await verifyPassword(password, restaurant.password))) {
+            await activity.logEvent(req, restaurant, "login-failed", "Wrong password");
+            return fail();
+        }
+
+        // ⏳ Subscription days finished → deactivate automatically
+        if (restaurant.isActive && !restaurant.isAdmin && activity.autoDeactivateOn() && daysLeft(restaurant) <= 0) {
+            await activity.deactivateForSubscription(restaurant, req);
+            restaurant.isActive = false;
+            restaurant.deactivatedReason = "subscription";
+        }
 
         if (!restaurant.isActive) {
-            return res.status(403).json({ success: false, message: "Account is deactivated. Contact Admin." });
-       
+            const bySubscription = restaurant.deactivatedReason === "subscription";
+            await activity.logEvent(req, restaurant, bySubscription ? "blocked-expired" : "blocked-deactivated", "Tried to log in");
+            return res.status(403).json(
+                bySubscription
+                    ? { success: false, code: "SUBSCRIPTION_EXPIRED", message: EXPIRED_MESSAGE }
+                    : { success: false, message: "Account is deactivated. Contact Admin." }
+            );
         }
         if (isExpired(restaurant)) {
+            await activity.logEvent(req, restaurant, "blocked-expired", "Tried to log in");
             return res.status(403).json({ success: false, code: "SUBSCRIPTION_EXPIRED", message: EXPIRED_MESSAGE });
         }
         // Upgrade an old plain-text password to a secure hash on the first successful login.
@@ -337,6 +361,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
         }
 
         const token = signToken({ kind: "restaurant", uid: String(restaurant._id) });
+        await activity.logEvent(req, restaurant, "login", "Restaurant login");
         return res.status(200).json({
             success: true,
             message: "Login successful!",
@@ -398,6 +423,7 @@ app.post("/api/auth/admin-otp/verify", loginLimiter, async (req, res) => {
         }
 
         const token = signToken({ kind: "restaurant", uid: String(user._id) });
+        await activity.logEvent(req, user, "login", "Admin login (email code)");
         return res.status(200).json({ success: true, message: "Login successful!", token, user: publicUser(user) });
     } catch (error) {
         console.error("🔴 ADMIN OTP VERIFY:", error);
@@ -462,6 +488,10 @@ app.use("/api/public", require("./routes/publicMenu"));
 app.use("/api", requireAuth);
 app.use("/api", require("./utils/idempotency"));
 
+// 📋 Activity log: the app says "open / still open / closed" here, the Super Admin reads the log
+app.use("/api/activity", activity.sessionRouter);
+app.use("/api/admin/activity", requireAdmin, activity.adminRouter);
+
 app.post("/api/auth/verify", requireAuth, async (req, res) => {
     try {
         const restaurant = await RestaurantUser.findById(req.auth.uid);
@@ -491,7 +521,9 @@ app.post("/api/staff/login", loginLimiter, async (req, res) => {
             .collation({ locale: "en", strength: 2 })
             .select("+password");
 
+        const thisRestaurant = { _id: req.auth.uid, id: req.auth.restaurantId, restaurantName };
         if (!staff || !(await verifyPassword(password, staff.password))) {
+            await activity.logEvent(req, thisRestaurant, "login-failed", `Staff login failed (ID "${id.slice(0, 40)}")`);
             return res.status(401).json({ success: false, message: "Invalid staff ID or password." });
         }
         if (staff.isActive === false) {
@@ -502,6 +534,8 @@ app.post("/api/staff/login", loginLimiter, async (req, res) => {
             staff.password = await hashPassword(password);
             await staff.save();
         }
+
+        await activity.logEvent(req, thisRestaurant, "staff-login", `${staff.staffName || staff.id} (${staff.role})`);
 
         // uid = the restaurant from the current session, never looked up by name
         const token = signToken({ kind: "staff", uid: req.auth.uid, sid: String(staff._id) });
@@ -1760,7 +1794,29 @@ app.put("/api/admin/users/:userId", requireAuth, requireManager, async (req, res
             if (restaurant.isAdmin && b.isActive !== true) {
                 return res.status(400).json({ success: false, message: "An admin account cannot be deactivated." });
             }
+            const wasActive = restaurant.isActive;
             restaurant.isActive = b.isActive === true;
+            if (restaurant.isActive) {
+                restaurant.deactivatedReason = null;
+                restaurant.deactivatedAt = null;
+            } else if (wasActive) {
+                restaurant.deactivatedReason = "manual";
+                restaurant.deactivatedAt = new Date();
+            }
+        }
+
+        // ⏳ Subscription: days added → switch an auto-deactivated account back on
+        if (req.auth.isAdmin && !restaurant.isAdmin) {
+            const left = daysLeft(restaurant);
+            const renewed = b.totalTime !== undefined || b.remainingTime !== undefined;
+            if (!restaurant.isActive && restaurant.deactivatedReason === "subscription" && left > 0 && renewed) {
+                restaurant.isActive = true;
+                restaurant.deactivatedReason = null;
+                restaurant.deactivatedAt = null;
+                await activity.logEvent(req, restaurant, "reactivated", `Subscription renewed (${left} days)`);
+            } else if (restaurant.isActive && left <= 0 && activity.autoDeactivateOn()) {
+                return res.status(400).json({ success: false, message: "This account has 0 subscription days left. Add days first, then activate it." });
+            }
         }
 
         await restaurant.save();
@@ -1988,6 +2044,7 @@ conectDb()
                 // 🛵 DELIVERY: use a http server so Socket.IO can share the same port
         const server = http.createServer(app);
         realtime.init(server, allowedOrigins);
+        activity.startActivityJobs(); // 📋 closes silent sessions + ⏳ deactivates finished subscriptions
         server.listen(Number(PORT), "0.0.0.0", () => {
             console.log(`✅ RMS server running on port ${PORT}`);
         });
