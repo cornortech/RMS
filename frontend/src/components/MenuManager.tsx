@@ -27,6 +27,7 @@ import {
 import MenuImage from './MenuImage';
 import { createPortal } from 'react-dom';
 import { TRANSLATIONS } from '../translations';
+import { MenuOffersPanel } from './OfferTools'; // 🏷️ offers & discounts
 
 // ==========================================
 // CONFIG
@@ -90,6 +91,8 @@ interface ComboItem {
 }
 
 interface MenuItemType {
+  basePrice?: number; // 🏷️ normal price (price = offer price while an offer runs)
+  offer?: { price: number; percentOff: number; label: string; endsAt: string | null } | null;
   _id: string;
   id: string;
   restaurantId: string;
@@ -260,7 +263,8 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
       const scoped = (result.data || []).filter(
         (m: MenuItemType) => String(m.restaurantId || '').trim() === String(restaurantId).trim()
       );
-      setMenuItems(scoped);
+      // 🏷️ The Menu page always shows and edits the NORMAL price (never the offer price)
+      setMenuItems(scoped.map((m: MenuItemType) => ({ ...m, price: Number(m.basePrice ?? m.price) || 0 })));
     } catch (err: any) {
       setLoadError(err.message || 'Could not connect to the server.');
     } finally {
@@ -936,6 +940,9 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
           </div>
 
           {/* Combo promo strip when no combos exist yet */}
+          {/* 🏷️ OFFERS & DISCOUNTS (Manager) */}
+          {currentUserRole === 'Owner' && <MenuOffersPanel onChanged={fetchMenuItems} />}
+
           {!loading && !loadError && menuItems.length >= 2 && stats.combos === 0 && canEditOrDelete && (
             <button
               onClick={() => openAddModal(COMBO)}
@@ -1149,7 +1156,14 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                       <StatusBadge status={item.status} />
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-                      <span className="font-mono text-base font-bold tabular-nums text-purple-700">{formatNPR(item.price)}</span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className={`font-mono text-base font-bold tabular-nums ${item.offer ? 'text-slate-400 line-through' : 'text-purple-700'}`}>{formatNPR(item.price)}</span>
+                        {item.offer && (
+                          <span className="rounded-lg bg-fuchsia-100 px-1.5 py-0.5 font-mono text-xs font-extrabold text-fuchsia-700" title={item.offer.label || 'Offer'}>
+                            {formatNPR(item.offer.price)} · {item.offer.percentOff}% OFF
+                          </span>
+                        )}
+                      </span>
                       <ActionButtons item={item} />
                     </div>
                   </div>
@@ -1202,7 +1216,16 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${cat.chip}`}>{combo ? COMBO : item.category}</span>
                         </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold tabular-nums text-slate-900">{formatNPR(item.price)}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold tabular-nums text-slate-900">
+                          {item.offer ? (
+                            <>
+                              <span className="block text-xs text-slate-400 line-through">{formatNPR(item.price)}</span>
+                              <span className="text-fuchsia-700">{formatNPR(item.offer.price)}</span>
+                            </>
+                          ) : (
+                            formatNPR(item.price)
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-center"><StatusBadge status={item.status} /></td>
                         <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{item.skuBarcodeReference || '—'}</td>
                         <td className="px-4 py-3 text-center">

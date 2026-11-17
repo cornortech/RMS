@@ -14,6 +14,7 @@ const rateLimit = require("express-rate-limit");
 const RestaurantUser = require("../models/login");
 const Table = require("../models/table");
 const Menu = require("../models/menu");
+const { activeOffer, offerPrice } = require("../utils/offer"); // 🏷️ item offers
 const WaiterCall = require("../models/waiterCall");
 const realtime = require("../utils/realtime");
 
@@ -63,7 +64,7 @@ router.get("/menu/:restaurantKey/:tableId", async (req, res) => {
       restaurantId: restaurant.id,
             status: mongoose.trusted({ $in: ["Available", "Sold Out"] }),
     })
-      .select("itemName description category price status isCombo comboItems imageUrl")
+.select("itemName description category price status isCombo comboItems imageUrl offer")
       .sort({ category: 1, itemName: 1 })
       .lean();
 
@@ -78,7 +79,9 @@ router.get("/menu/:restaurantKey/:tableId", async (req, res) => {
           itemName: m.itemName,
           description: m.description,
           category: m.category,
-          price: m.price,
+          price: offerPrice(m),        // 🏷️ offer price while an offer runs
+          originalPrice: m.price,
+          offerLabel: activeOffer(m)?.label || "",
           status: m.status,
           isCombo: m.isCombo,
           imageUrl: m.imageUrl || "",

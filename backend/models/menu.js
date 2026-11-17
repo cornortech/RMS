@@ -22,6 +22,22 @@ const restaurantMenuSchema = new mongoose.Schema(
         // 📷 Photo (the file lives in Cloudinary, we only keep its link here)
         imageUrl: { type: String, default: "" },
         imagePublicId: { type: String, default: "" }, // Cloudinary's name for the file (used to delete it)
+
+        // 🏷️ OFFER: discount on this item for a few days (null = no offer). The normal price above never changes.
+        offer: {
+            type: new mongoose.Schema(
+                {
+                    kind: { type: String, enum: ["percent", "flat"], required: true },
+                    value: { type: Number, required: true, min: 0 },
+                    label: { type: String, default: "", maxlength: 40 },
+                    startsAt: { type: Date, default: Date.now },
+                    endsAt: { type: Date, default: null },
+                    createdBy: { type: String, default: "" },
+                },
+                { _id: false }
+            ),
+            default: null,
+        },
         restaurantId: { type: String, required: true, index: true },
 
         // Combo support

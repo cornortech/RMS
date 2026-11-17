@@ -115,6 +115,7 @@ const cleanPaidVia = (v) => (PAID_VIA.includes(v) ? v : "");
 // 💰 Bills with these methods are NOT paid yet → not counted in revenue until paid
 const UNPAID_METHODS = ["Pending", "Due", "Delivery"];
 const isPaidMethod = (m) => !!m && !UNPAID_METHODS.includes(m);
+const { activeOffer, offerPrice } = require("./utils/offer"); // 🏷️ item offers
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 
@@ -611,6 +612,7 @@ app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/delivery", require("./routes/delivery")); // 🛵 DELIVERY: staff/admin pages
 app.use("/api/attendance", requireManager, require("./routes/attendance")); // 🖐️ ATTENDANCE: Manager / Admin only
+app.use("/api/menu-offers", requireManager, require("./routes/menuOffers")); // 🏷️ SLOW ITEMS + OFFERS: Manager / Admin only
 app.use("/api/food-cost", require("./routes/foodCost")); // 🍳 FOOD PREPARATION COST: Manager / Kitchen Staff / Cashier
 
 
@@ -721,7 +723,10 @@ app.get("/api/menu", async (req, res) => {
                 itemName: item.itemName,
                 description: item.description,
                 category: item.category,
-                price: item.price,
+                // 🏷️ price = what to charge NOW (offer price while an offer runs). basePrice = normal price.
+                price: offerPrice(item),
+                basePrice: item.price,
+                offer: activeOffer(item),
                 status: item.status,
                 skuBarcodeReference: item.skuBarcodeReference || "",
                 imageUrl: item.imageUrl || "",

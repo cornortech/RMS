@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 
 const Menu = require("../models/menu");
+const { offerPrice } = require("../utils/offer"); // 🏷️ item offers
 const Order = require("../models/createOrder");
 const DeliveryMenuExtra = require("../models/deliveryMenuExtra");
 const DeliverySetting = require("../models/deliverySettings");
@@ -131,12 +132,13 @@ async function buildQuote({ restaurantId, settings, cart, areaId, lat, lng }) {
     }
 
     const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
-    const lineTotal = roundMoney((menu.price + addonsTotal) * qty);
+    const unitPrice = offerPrice(menu); // 🏷️ offer price while an offer runs
+    const lineTotal = roundMoney((unitPrice + addonsTotal) * qty);
     subTotal += lineTotal;
     lines.push({
       menuItemId: id,
       itemName: menu.itemName,
-      itemPrice: menu.price,
+      itemPrice: unitPrice,
       quantity: qty,
       addons,
       note: cleanText(c.note, 200),

@@ -15,6 +15,7 @@ import { menuThumb } from '../MenuImage';
 // =====================================================================
 interface MenuItem {
   _id: string; itemName: string; description: string; category: string; price: number; available: boolean;
+  originalPrice?: number; offerLabel?: string; // 🏷️ offer (price = offer price)
   isCombo: boolean; comboItems: { itemName: string; quantity: number }[]; imageUrl: string; addons: { name: string; price: number }[];
 }
 interface PublicSettings {
@@ -284,7 +285,8 @@ export default function OnlineOrder() {
                     <button onClick={() => setSheet(m)} className="relative block h-32 w-full sm:h-36" aria-label={`See ${m.itemName}`}>
                       <Photo item={m} size={400} emojiClass="text-5xl" />
                       <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent" />
-                      <span className="absolute bottom-2 left-3 rounded-full bg-white/95 px-2.5 py-0.5 text-xs font-extrabold text-stone-900 shadow">{money(m.price)}</span>
+                      <span className="absolute bottom-2 left-3 rounded-full bg-white/95 px-2.5 py-0.5 text-xs font-extrabold text-stone-900 shadow">{m.originalPrice != null && m.originalPrice > m.price && <span className="mr-1 font-semibold text-stone-400 line-through">{money(m.originalPrice)}</span>}{money(m.price)}</span>
+                      {m.originalPrice != null && m.originalPrice > m.price && <span className="absolute right-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white shadow">{m.offerLabel || `${Math.round(((m.originalPrice - m.price) / m.originalPrice) * 100)}% off`}</span>}
                     </button>
                     <div className="flex items-center gap-2 p-3">
                       <p className="line-clamp-2 flex-1 text-sm font-bold leading-snug text-stone-900">{m.itemName}</p>
@@ -339,7 +341,11 @@ export default function OnlineOrder() {
                       <button onClick={() => m.available && setSheet(m)} className="text-left">
                         <h3 className="oo-display text-[17px] font-bold leading-snug text-stone-900">{m.itemName}</h3>
                       </button>
-                      <p className="mt-0.5 font-extrabold text-stone-900">{money(m.price)}</p>
+                      <p className="mt-0.5 font-extrabold text-stone-900">
+                        {m.originalPrice != null && m.originalPrice > m.price && <span className="mr-1.5 text-sm font-semibold text-stone-400 line-through">{money(m.originalPrice)}</span>}
+                        {money(m.price)}
+                        {m.originalPrice != null && m.originalPrice > m.price && <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 align-middle text-[10px] font-extrabold uppercase text-white">{m.offerLabel || `${Math.round(((m.originalPrice - m.price) / m.originalPrice) * 100)}% off`}</span>}
+                      </p>
                       {m.isCombo && m.comboItems.length > 0 && <p className="mt-1 text-xs font-semibold text-fuchsia-700">{m.comboItems.map((c) => `${c.quantity}× ${c.itemName}`).join(' + ')}</p>}
                       {cleanDesc(m.description) && <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-stone-500">{cleanDesc(m.description)}</p>}
                       {m.addons.length > 0 && m.available && <p className="mt-auto pt-2 text-[11px] font-bold text-purple-600">✨ Customisable</p>}
@@ -578,7 +584,10 @@ function ItemSheet({ item, open, onClose, onAdd }: { item: MenuItem; open: boole
           <div>
             <div className="flex items-start justify-between gap-3">
               <h2 className="oo-display text-2xl font-extrabold leading-tight text-stone-900">{item.itemName}</h2>
-              <span className="shrink-0 rounded-xl bg-purple-50 px-3 py-1 text-lg font-extrabold text-purple-600">{money(item.price)}</span>
+              <span className="shrink-0 rounded-xl bg-purple-50 px-3 py-1 text-right text-lg font-extrabold text-purple-600">
+                {item.originalPrice != null && item.originalPrice > item.price && <span className="block text-xs font-semibold text-stone-400 line-through">{money(item.originalPrice)}</span>}
+                {money(item.price)}
+              </span>
             </div>
             {item.isCombo && item.comboItems.length > 0 && <p className="mt-1 text-sm font-semibold text-fuchsia-700">{item.comboItems.map((c) => `${c.quantity}× ${c.itemName}`).join(' + ')}</p>}
             {cleanDesc(item.description) && <p className="mt-2 text-sm leading-relaxed text-stone-500">{cleanDesc(item.description)}</p>}

@@ -14,6 +14,8 @@ interface MenuItem {
   description: string;
   category: string;
   price: number;
+  originalPrice?: number; // 🏷️ normal price when an offer runs
+  offerLabel?: string;
   status: string;
   isCombo: boolean;
   comboItems: { itemName: string; quantity: number }[];
@@ -295,7 +297,15 @@ export default function CustomerMenu() {
                         )}
                       </div>
                       <div className="shrink-0 text-right">
+                        {m.originalPrice != null && m.originalPrice > m.price && (
+                          <p className="text-xs text-slate-400 line-through">Rs. {m.originalPrice}</p>
+                        )}
                         <p className="font-bold text-purple-700">Rs. {m.price}</p>
+                        {m.originalPrice != null && m.originalPrice > m.price && (
+                          <span className="mt-0.5 inline-block rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white">
+                            {m.offerLabel || `${Math.round(((m.originalPrice - m.price) / m.originalPrice) * 100)}% off`}
+                          </span>
+                        )}
                         {soldOut && <p className="text-xs font-semibold text-rose-600">Sold out</p>}
                       </div>
                     </div>

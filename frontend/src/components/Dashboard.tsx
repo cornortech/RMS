@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Customer, Sale } from '../types';
+import SlowSellers from './SlowSellers'; // 📉 slow-selling items (last 3 days)
 import ProfitSummary, { useItemCosts } from './ProfitSummary'; // 💰 profit + food cost
 
 // ==========================================
@@ -2432,6 +2433,9 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
           />
         </div>
       </div>
+
+      {/* ---------- SLOW-SELLING ITEMS (last 3 days of bills) ---------- */}
+      <SlowSellers onOpenMenu={() => setView('inventory')} />
 
       {/* ---------- SALES BY STAFF + TOP SELLING DISHES ---------- */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" id="rankings-grid">
