@@ -6,7 +6,7 @@ import {
   FileText, Printer, X, LogOut, Menu, Lock, User2, AlertCircle, Loader2,
   Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer,
    Languages, ArrowLeft, Store, KeyRound,Bell,
-   Bike, Fingerprint,
+   Bike, Fingerprint, ChefHat,
 } from 'lucide-react';
 import { printReceipt } from './utils/printReceipt';
 import { useLang } from './i18n';
@@ -28,6 +28,7 @@ import AdminDashboard from './components/AdminDashboard';
 import { startSessionTracking, endSession } from './utils/sessionTracker'; // 📋 open / close log
 import StaffManager from './components/StaffManager';
 import Attendance from './components/Attendance';
+import FoodCost from './components/FoodCost'; // 🍳 Food Preparation Cost
 import RESTAURANTSettings from './components/Setting';
 import OrdersPage from './components/Orders';
 import OfflineBanner from './offline/OfflineBanner';
@@ -52,7 +53,7 @@ type StaffRole = 'Manager' | 'Waiter' | 'Kitchen Staff' | 'Cashier';
 type AppView =
   | 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings'
   | 'orders' | 'tables' | 'kitchen' | 'createbill' | 'totalorder'
-| 'unpaidbill' | 'deliverybill' | 'stock' | 'notifications' | 'delivery' | 'attendance';
+| 'unpaidbill' | 'deliverybill' | 'stock' | 'notifications' | 'delivery' | 'attendance' | 'foodcost';
 
 interface RoleConfig {
   label: StaffRole;
@@ -63,7 +64,7 @@ interface RoleConfig {
 const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   Manager: {
     label: 'Manager',
-    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'deliverybill', 'stock','notifications','delivery', 'attendance'],
+    pages: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'deliverybill', 'stock','notifications','delivery', 'attendance', 'foodcost'],
     defaultView: 'dashboard',
   },
   Waiter: {
@@ -73,12 +74,12 @@ const ROLE_ACCESS: Record<StaffRole, RoleConfig> = {
   },
   'Kitchen Staff': {
     label: 'Kitchen Staff',
-    pages: ['kitchen', 'stock', 'delivery'],
+    pages: ['kitchen', 'stock', 'delivery', 'foodcost'],
     defaultView: 'kitchen',
   },
   Cashier: {
     label: 'Cashier',
-    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'deliverybill', 'stock', 'delivery'],
+    pages: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'deliverybill', 'stock', 'delivery', 'foodcost'],
     defaultView: 'createbill',
   },
 };
@@ -154,6 +155,7 @@ const NAV_ITEMS: NavItem[] = [
   { view: 'unpaidbill', icon: Clock, group: 'billing', label: { en: 'Pending Bills', ne: 'बाँकी बिलहरू' } },
     { view: 'deliverybill', icon: Bike, group: 'billing', label: { en: 'Delivery Bills', ne: 'डेलिभरी बिलहरू' } },
   { view: 'totalorder', icon: TrendingUp, group: 'billing', label: { en: 'Total Sales', ne: 'कुल बिक्री' } },
+  { view: 'foodcost', icon: ChefHat, group: 'billing', label: { en: 'Food Preparation Cost', ne: 'खाना तयारी लागत' } },
   { view: 'billing', icon: ShieldCheck, group: 'billing', label: { en: 'Billing & VAT Audit', ne: 'बिलिङ र भ्याट अडिट' } },
 
   { view: 'staff', icon: Users, group: 'admin', label: { en: 'Manage Staff', ne: 'कर्मचारी व्यवस्थापन' } },
@@ -1416,6 +1418,8 @@ const { lang, setLang } = useLang();
             )}
 
             {currentView === 'stock' && canAccess('stock') && <StockManagement />}
+
+            {currentView === 'foodcost' && canAccess('foodcost') && <FoodCost />}
 
             {currentView === 'billing' && canAccess('billing') && (
               <BillingManager

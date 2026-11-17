@@ -27,6 +27,17 @@ const restaurantMenuSchema = new mongoose.Schema(
         // Combo support
         isCombo: { type: Boolean, default: false },
         comboItems: { type: [comboItemSchema], default: [] },
+
+        // 🍳 FOOD PREPARATION COST (what it costs the restaurant to make ONE plate)
+        //    null = not written yet. Only Manager / Kitchen Staff / Cashier can see or change it.
+        costPrice: { type: Number, default: null, min: 0 },
+        // Every change is kept with its date, so old sales keep the cost they had at that time
+        costHistory: {
+            type: [{ _id: false, cost: { type: Number, default: null }, from: { type: Date, default: Date.now } }],
+            default: [],
+        },
+        costUpdatedAt: { type: Date, default: null },
+        costUpdatedBy: { type: String, default: "" },
     },
     { timestamps: true }
 );

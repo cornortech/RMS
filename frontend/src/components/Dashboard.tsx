@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Customer, Sale } from '../types';
+import ProfitSummary, { useItemCosts } from './ProfitSummary'; // 💰 profit + food cost
 
 // ==========================================
 // CONFIG
@@ -44,7 +45,7 @@ const RESTAURANT_USER_STORAGE_KEY = 'user';
 interface DashboardProps {
   customers?: Customer[];
   lang: 'en' | 'ne';
-  setView: (view: 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings' | 'orders' | 'tables' | 'kitchen' | 'createbill') => void;
+  setView: (view: 'dashboard' | 'pos' | 'inventory' | 'billing' | 'staff' | 'settings' | 'orders' | 'tables' | 'kitchen' | 'createbill' | 'foodcost') => void;
   setSelectedCustomer?: (customer: Customer | null) => void;
   onViewInvoice?: (sale: Sale) => void;
 }
@@ -1732,18 +1733,33 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     amountClass: STAFF_THEME.amount,
   });
 
-  const dishRowProps = (d: (typeof dishStats)[number], i: number) => ({
+  // 🍳 cost of 1 plate for each dish (from Food Preparation Cost)
+  const { costs: itemCosts } = useItemCosts();
+  const dishRowProps = (d: (typeof dishStats)[number], i: number) => {
+    const c = itemCosts[d.name.toLowerCase()];
+    const cost = c && c.cost !== null ? c.cost * d.qty : null;
+    const rs = (n: number) => `NPR ${Math.round(n).toLocaleString('en-IN')}`;
+    return {
     rank: i + 1,
     title: d.name,
     sub: (
       <span>
         {T.totalSold}: <span className="font-bold text-slate-800">{d.qty}</span>
+        {cost !== null && (
+          <>
+            {' · '}Cost <span className="font-semibold text-orange-600">{rs(cost)}</span>
+            {' · '}Profit{' '}
+            <span className={`font-semibold ${d.total - cost < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{rs(d.total - cost)}</span>
+            {c.estimated && <span className="text-amber-600" title="Estimated — no preparation cost added for this item"> (est.)</span>}
+          </>
+        )}
       </span>
     ),
     amount: formatNPR(d.total),
     note: T.totalSale,
     amountClass: DISH_THEME.amount,
-  });
+    };
+  };
 
   // ---- transaction history (search + payment filter + scroll) ----
   const [query, setQuery] = useState('');
@@ -2136,6 +2152,9 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     );
   })()}
 </div>
+
+      {/* ---------- PROFIT & FOOD COST ---------- */}
+      <ProfitSummary onOpen={() => setView('foodcost')} />
 
       {/* ---------- SUBSCRIPTION / TIME REMAINING ---------- */}
       <SubscriptionCard loading={planLoading} total={planTotal} remaining={planRemaining} T={T} />

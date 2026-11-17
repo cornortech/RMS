@@ -611,6 +611,7 @@ app.use("/api/table-qr", require("./routes/tableQr"));
 app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/delivery", require("./routes/delivery")); // 🛵 DELIVERY: staff/admin pages
 app.use("/api/attendance", requireManager, require("./routes/attendance")); // 🖐️ ATTENDANCE: Manager / Admin only
+app.use("/api/food-cost", require("./routes/foodCost")); // 🍳 FOOD PREPARATION COST: Manager / Kitchen Staff / Cashier
 
 
 
