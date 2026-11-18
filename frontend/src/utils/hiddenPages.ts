@@ -1,8 +1,9 @@
 // =====================================================================
 // 🧭 SIDEBAR MENU — which pages this restaurant has switched OFF
 // Saved in Settings → Features → Sidebar menu (server: /api/features → hiddenPages).
-// Kept on this device too, so the sidebar is right at once (and when offline).
-// Dashboard and Settings can never be hidden.
+// Kept on this device too (separately for EACH restaurant), so the sidebar is right
+// at once and when offline. Another restaurant logging in on the same device never
+// sees this restaurant's list. Dashboard and Settings can never be hidden.
 // =====================================================================
 import { useCallback, useEffect, useState } from 'react';
 import { useLiveRefresh } from './liveSync';
@@ -12,10 +13,14 @@ const KEY = 'rmsHiddenPages';
 export const HIDDEN_PAGES_EVENT = 'rms:hidden-pages';
 export const ALWAYS_SHOWN = ['dashboard', 'settings'];
 
-const readLocal = (): string[] => {
+let currentOwner = ''; // the restaurant that is logged in on this tab
+
+const readLocal = (owner: string): string[] => {
+  if (!owner) return [];
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) || '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && !ALWAYS_SHOWN.includes(x)) : [];
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    const list = saved && saved.owner === owner ? saved.list : [];
+    return Array.isArray(list) ? list.filter((x: unknown) => typeof x === 'string' && !ALWAYS_SHOWN.includes(x as string)) : [];
   } catch {
     return [];
   }
@@ -25,35 +30,39 @@ const readLocal = (): string[] => {
 export function setHiddenPagesLocal(list: string[]) {
   const clean = list.filter((x) => !ALWAYS_SHOWN.includes(x));
   try {
-    localStorage.setItem(KEY, JSON.stringify(clean));
+    if (currentOwner) localStorage.setItem(KEY, JSON.stringify({ owner: currentOwner, list: clean }));
   } catch {
     /* ignore */
   }
   window.dispatchEvent(new CustomEvent(HIDDEN_PAGES_EVENT, { detail: clean }));
 }
 
-/** Hidden pages for the logged-in restaurant. `loginKey` changes → read again. */
-export function useHiddenPages(loginKey: string) {
-  const [hidden, setHidden] = useState<string[]>(readLocal);
+/** Hidden pages for the logged-in restaurant. `restaurantKey` = that restaurant's name / id. */
+export function useHiddenPages(restaurantKey: string) {
+  const owner = String(restaurantKey || '').trim().toLowerCase();
+  const [hidden, setHidden] = useState<string[]>(() => readLocal(owner));
 
   const load = useCallback(async () => {
-    if (!loginKey) return;
+    if (!owner) return;
     try {
       const res = await fetch(`${API_BASE}/api/features`);
       const json = await res.json().catch(() => ({}));
-      if (res.ok && json.success && Array.isArray(json.data?.hiddenPages)) {
+      if (res.ok && json.success && Array.isArray(json.data?.hiddenPages) && currentOwner === owner) {
         setHiddenPagesLocal(json.data.hiddenPages);
       }
     } catch {
-      /* offline → keep what this device has */
+      /* offline → keep what this device has for this restaurant */
     }
-  }, [loginKey]);
+  }, [owner]);
 
+  // New login / other restaurant → start from THAT restaurant's own list, then ask the server
   useEffect(() => {
+    currentOwner = owner;
+    setHidden(readLocal(owner));
     load();
-  }, [load]);
+  }, [owner, load]);
 
-  // Changed on another device → update here too (live)
+  // Changed on another device of the same restaurant → update here too (live)
   useLiveRefresh(['features'], load);
 
   useEffect(() => {

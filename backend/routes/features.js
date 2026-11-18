@@ -17,13 +17,15 @@ const HIDEABLE_PAGES = [
   "pos", "orders", "notifications", "delivery", "tables", "kitchen", "inventory", "stock",
   "createbill", "unpaidbill", "deliverybill", "totalorder", "foodcost", "billing", "staff", "attendance",
 ];
-const DEFAULTS = { skipBeverageKot: false, vatEnabled: false, vatRate: 13, kitchenAlerts: false, hiddenPages: [] };
+const DEFAULTS = { skipBeverageKot: false, vatEnabled: false, vatRate: 13, kitchenAlerts: false, hiddenPages: [], themeColor: "" };
+const HEX = /^#[0-9a-f]{6}$/i; // 🎨 theme color
 const view = (doc) => ({
   skipBeverageKot: Boolean(doc?.skipBeverageKot),
   vatEnabled: Boolean(doc?.vatEnabled),
   vatRate: Number.isFinite(doc?.vatRate) ? doc.vatRate : 13,
   kitchenAlerts: Boolean(doc?.kitchenAlerts),
   hiddenPages: Array.isArray(doc?.hiddenPages) ? doc.hiddenPages.filter((p) => HIDEABLE_PAGES.includes(p)) : [],
+  themeColor: HEX.test(doc?.themeColor || "") ? doc.themeColor.toLowerCase() : "",
 });
 
 router.get("/", async (req, res) => {
@@ -48,6 +50,13 @@ router.put("/", requireManager, async (req, res) => {
       }
       // only known pages, no duplicates
       update.hiddenPages = [...new Set(req.body.hiddenPages.filter((p) => HIDEABLE_PAGES.includes(p)))];
+    }
+    if (req.body?.themeColor !== undefined) {
+      const c = req.body.themeColor;
+      if (c !== "" && !(typeof c === "string" && HEX.test(c))) {
+        return res.status(400).json({ success: false, message: "Theme color must look like #2563eb." });
+      }
+      update.themeColor = c.toLowerCase();
     }
     if (req.body?.vatRate !== undefined) {
       const rate = Number(req.body.vatRate);

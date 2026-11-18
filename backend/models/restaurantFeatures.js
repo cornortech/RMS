@@ -14,6 +14,8 @@ const restaurantFeaturesSchema = new mongoose.Schema(
     kitchenAlerts: { type: Boolean, default: false },
     // 🧭 SIDEBAR MENU: pages switched OFF for this restaurant (hidden from everyone). Empty = show all.
     hiddenPages: { type: [String], default: [] },
+    // 🎨 COLOR THEME: this restaurant's main color, e.g. "#2563eb". "" = normal purple.
+    themeColor: { type: String, default: "" },
   },
   { timestamps: true }
 );

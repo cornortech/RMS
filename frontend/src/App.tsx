@@ -28,6 +28,7 @@ import AdminDashboard from './components/AdminDashboard';
 import { startSessionTracking, endSession } from './utils/sessionTracker'; // 📋 open / close log
 import { startLiveSync, stopLiveSync } from './utils/liveSync'; // 🔄 live updates (no F5)
 import { useHiddenPages } from './utils/hiddenPages'; // 🧭 Settings → Features → Sidebar menu
+import { useRestaurantTheme } from './utils/theme'; // 🎨 Settings → Features → Color theme
 import StaffManager from './components/StaffManager';
 import Attendance from './components/Attendance';
 import FoodCost from './components/FoodCost'; // 🍳 Food Preparation Cost
@@ -981,7 +982,9 @@ const { lang, setLang } = useLang();
   const [staffPayload, setStaffPayload] = useState<{ id: string; role: StaffRole; RESTAURANTName: string } | null>(null);
 
   // 🧭 Pages this restaurant switched OFF in Settings → Features → Sidebar menu
-  const hiddenPages = useHiddenPages(staffPayload ? `${staffPayload.RESTAURANTName}|${staffPayload.id}` : '');
+  const hiddenPages = useHiddenPages(staffPayload?.RESTAURANTName || '');
+  // 🎨 This restaurant's own color theme (logged out → normal purple)
+  useRestaurantTheme(staffPayload?.RESTAURANTName || '');
   // If the page you are on gets switched OFF → go to your first page that is still ON
   useEffect(() => {
     if (!staffPayload) return;
