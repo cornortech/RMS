@@ -1812,7 +1812,15 @@ function BillModal({ bill, lang, onClose, preview = false }: { bill: any; lang: 
 // MAIN CREATE BILL PAGE
 // ==========================================
 
-export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
+export default function CreateBill({
+  lang = 'en' as Lang,
+  embedOrder = null,
+  onEmbedClose,
+}: {
+  lang?: Lang;
+  embedOrder?: any; // 🍽️ opened from Create Order → bill THIS order straight away
+  onEmbedClose?: (billed: boolean) => void; // called when the bill window closes
+}) {
   const menuDesc = useMenuDescriptions(); // 📝 description for old orders
   const user = getLoggedInUser();
   const restaurantId = user?.id ? String(user.id) : '';
@@ -1874,6 +1882,28 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   const [submitting, setSubmitting] = useState(false);
   const [createdBill, setCreatedBill] = useState<any | null>(null);
     const [previewBill, setPreviewBill] = useState<any | null>(null); // 🖨️ bill printed before it is created
+
+  // 🍽️ Opened from Create Order: show this order's bill at once, and go back when it closes
+  const embedOpened = useRef(false);
+  const embedBilled = useRef(false);
+  useEffect(() => {
+    if (!embedOrder) return;
+    embedOpened.current = true;
+    embedBilled.current = false;
+    setSelectedOrder(embedOrder);
+  }, [embedOrder]);
+  const embedShown = useRef(false);
+  useEffect(() => {
+    if (!embedOrder || !embedOpened.current) return;
+    if (selectedOrder) embedShown.current = true; // the bill window is open now
+    if (createdBill) embedBilled.current = true;
+    if (embedShown.current && !selectedOrder && !createdBill) {
+      embedOpened.current = false;
+      embedShown.current = false;
+      onEmbedClose?.(embedBilled.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrder, createdBill]);
 
   const [qrMethod, setQrMethod] = useState<WalletId | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -2375,7 +2405,8 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentStatus: isPending || isDelivery ? 'Pending' : 'Paid',
-          orderStatus: 'Completed',
+          // 🍳 Billed before the kitchen finished (from Create Order) → the kitchen keeps cooking it
+          ...(['Pending', 'Preparing'].includes(String(selectedOrder.orderStatus)) ? {} : { orderStatus: 'Completed' }),
           // Save the typed name on the order too (ignored if your API does not allow it)
           ...(nameWasTyped ? { customerName: typedName } : {}),
         }),

@@ -19,7 +19,7 @@ import TotalOrder from './components/DailyOrderItem';
 import UnpaidBill from './components/UnPaidBill';
 import StockManagement from './components/StockManagement';
 import Dashboard from './components/Dashboard';
-import CreateOrder from './components/CreateOrder';
+import OrderFloor from './components/OrderFloor'; // 🍽️ Tables & Orders board → Create Order → Bill
 import MenuManager from './components/MenuManager';
 import BillingManager from './components/BillingManager';
 import LoginScreen from './components/LoginScreen';
@@ -1476,7 +1476,7 @@ const { lang, setLang } = useLang();
           <div key={currentView} className="mx-auto w-full max-w-[1600px] anim-fade-up">
             {currentView === 'dashboard' && canAccess('dashboard') && <Dashboard lang={lang} setView={setCurrentView} />}
 
-            {currentView === 'pos' && canAccess('pos') && <CreateOrder />}
+            {currentView === 'pos' && canAccess('pos') && <OrderFloor lang={lang} />}
 
             {currentView === 'totalorder' && canAccess('totalorder') && (
               <TotalOrder restaurantId={activeRESTAURANTName} />

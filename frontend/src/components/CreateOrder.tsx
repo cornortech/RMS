@@ -251,12 +251,74 @@ function QtyStepper({
 // COMPONENT
 // ==========================================
 
-interface CreateOrderProps {
-  onOrderCreated?: () => void;
+// 🍽️ How the order screen was opened (from the Tables & Orders board)
+export interface OrderStart {
+  tableId?: string; // a table was picked
+  tableName?: string;
+  customerName?: string; // takeaway / customer order
+  customerPhone?: string;
+  customerAddress?: string;
+  existingOrder?: any; // an open order → edit it
 }
 
-export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
+interface CreateOrderProps {
+  onOrderCreated?: () => void;
+  start?: OrderStart | null;
+  onBack?: () => void; // ← back to the board
+  onDone?: (order: any, mode: 'created' | 'updated') => void;
+  onBill?: (order: any) => void; // open Create Bill for this order (same page)
+  canBill?: boolean;
+}
+
+export default function CreateOrder({ onOrderCreated, start = null, onBack, onDone, onBill, canBill = false }: CreateOrderProps) {
   const { restaurantId, staffId, staffRole } = getAuthDetails();
+  const editingOrder = start?.existingOrder || null;
+  const isEditing = !!editingOrder;
+  // What the order had when it was opened (to see what was added / changed)
+  const originalRef = useRef<{ items: { name: string; qty: number; price: number }[]; note: string }>({ items: [], note: '' });
+
+  // ▶ Fill the screen from the board: the table / customer, or the open order's items
+  useEffect(() => {
+    if (!start) return;
+    const o = start.existingOrder;
+    if (o) {
+      const noTable = !o.tableNumber || o.tableNumber === NO_TABLE_LABEL;
+      if (noTable) {
+        setOrderBy('name');
+        setCustomerName(/^Guest\b/.test(o.customerName || '') ? '' : o.customerName || '');
+        setCustomerPhone(o.customerPhone || '');
+        setCustomerAddress(o.customerAddress || '');
+      } else {
+        setOrderBy('table');
+        setTableNumber(start.tableId || o.tableNumber);
+      }
+      setOrderNote(String(o.orderNote || '').replace(/^\[\+ Added:[^\]]*\]\s*/, ''));
+      setDeliveryChargeInput(Number(o.deliveryCharge) > 0 ? String(o.deliveryCharge) : '');
+      setPaidVia(o.paidVia || '');
+      const lines = (o.items || []).map((i: any) => ({
+        menuItemId: `old:${String(i.itemName).trim().toLowerCase()}`,
+        name: i.itemName,
+        description: i.description || '',
+        category: 'Other',
+        unitPrice: Number(i.itemPrice) || 0,
+        quantity: Number(i.quantity) || 1,
+      }));
+      setCart(lines);
+      originalRef.current = {
+        items: lines.map((l: CartLine) => ({ name: l.name, qty: l.quantity, price: l.unitPrice })),
+        note: String(o.orderNote || '').replace(/^\[\+ Added:[^\]]*\]\s*/, ''),
+      };
+    } else if (start.tableId || start.tableName) {
+      setOrderBy('table');
+      setTableNumber(start.tableId || start.tableName || '');
+    } else {
+      setOrderBy('name');
+      setCustomerName(start.customerName || '');
+      setCustomerPhone(start.customerPhone || '');
+      setCustomerAddress(start.customerAddress || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Menu
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -677,68 +739,130 @@ pickCustomer(customerSuggestions[highlight]);
     setShowConfirmModal(true);
   };
 
+  // Items of an open order → link them to today's menu (so tapping the menu adds to the same line)
+  useEffect(() => {
+    if (!menuItems.length) return;
+    setCart((prev) =>
+      prev.some((l) => l.menuItemId.startsWith('old:'))
+        ? prev.map((l) => {
+            if (!l.menuItemId.startsWith('old:')) return l;
+            const m = menuItems.find((x) => x.name.trim().toLowerCase() === l.name.trim().toLowerCase());
+            return m ? { ...l, menuItemId: m.id, category: m.category, description: l.description || m.description } : l;
+          })
+        : prev
+    );
+  }, [menuItems]);
+
   // ==========================================
-  // PLACE ORDER
+  // PLACE ORDER  (new)  /  UPDATE ORDER  (open order)
+  //   then = 'bill' → open Create Bill for it right away
   // ==========================================
-  const placeOrder = async () => {
+  // What changed compared with when the open order was opened
+  const changes = useMemo(() => {
+    const before = new Map<string, number>(originalRef.current.items.map((i) => [i.name.trim().toLowerCase(), i.qty] as [string, number]));
+    const added: string[] = [];
+    cart.forEach((l) => {
+      const was = before.get(l.name.trim().toLowerCase()) || 0;
+      if (l.quantity > was) added.push(`${l.quantity - was}× ${l.name}`);
+    });
+    const now = cart.map((l) => `${l.name.trim().toLowerCase()}|${l.quantity}|${l.unitPrice}`).sort().join(',');
+    const then = originalRef.current.items.map((i) => `${i.name.trim().toLowerCase()}|${i.qty}|${i.price}`).sort().join(',');
+    return { added, dirty: now !== then || orderNote.trim() !== originalRef.current.note.trim() };
+  }, [cart, orderNote]);
+
+  const placeOrder = async (then?: 'bill') => {
     setIsSubmitting(true);
     setErrorMessage('');
 
     const currentStaffId = (localStorage.getItem('staffId') || '').trim();
-        const phoneToSave = orderBy === 'name' ? customerPhone.trim() : '';
+    const phoneToSave = orderBy === 'name' ? customerPhone.trim() : '';
     const addressToSave = orderBy === 'name' ? customerAddress.trim() : '';
     // Only a real typed/selected name is saved as a customer (not the "Guest (Table)" fallback)
     const nameToSave = orderBy === 'name' ? customerName.trim() : '';
+    const items = cart.map((line) => ({
+      itemName: line.name,
+      description: line.description,
+      itemPrice: line.unitPrice,
+      quantity: line.quantity,
+    }));
 
     try {
-      const res = await fetch(ORDERS_URL, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          restaurantId,
-          staffId: currentStaffId,
-          customerName: finalCustomerName,
-          customerPhone: phoneToSave,
-          customerAddress: addressToSave,
-          tableNumber: finalTableNumber,
-          orderNote: orderNote.trim(),
-          items: cart.map((line) => ({
-            itemName: line.name,
-            description: line.description,
-            itemPrice: line.unitPrice,
-            quantity: line.quantity,
-          })),
-          totalAmount: cartTotal, // food only — the delivery charge is saved separately
-          deliveryCharge: orderDeliveryCharge,
-          paidVia,
-          orderStatus: 'Pending',
-          paymentStatus: 'Unpaid',
-        }),
-      });
+      let res: Response;
+      if (isEditing) {
+        // 🍳 New items on an order the kitchen already finished → send it back to the kitchen,
+        //    with a clear "Added" line so the cook makes only the new items
+        const backToKitchen =
+          changes.added.length > 0 && ['Ready', 'Served'].includes(String(editingOrder.orderStatus));
+        const note = orderNote.trim();
+        res = await fetch(`${ORDERS_URL}/${editingOrder._id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            customerName: finalCustomerName,
+            customerPhone: phoneToSave,
+            customerAddress: addressToSave,
+            tableNumber: finalTableNumber,
+            orderNote: changes.added.length ? `[+ Added: ${changes.added.join(', ')}] ${note}`.trim() : note,
+            items,
+            totalAmount: cartTotal,
+            deliveryCharge: orderDeliveryCharge,
+            paidVia,
+            ...(backToKitchen ? { orderStatus: 'Pending' } : {}),
+          }),
+        });
+      } else {
+        res = await fetch(ORDERS_URL, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            restaurantId,
+            staffId: currentStaffId,
+            customerName: finalCustomerName,
+            customerPhone: phoneToSave,
+            customerAddress: addressToSave,
+            tableNumber: finalTableNumber,
+            orderNote: orderNote.trim(),
+            items,
+            totalAmount: cartTotal, // food only — the delivery charge is saved separately
+            deliveryCharge: orderDeliveryCharge,
+            paidVia,
+            orderStatus: 'Pending',
+            paymentStatus: 'Unpaid',
+          }),
+        });
+      }
 
       const data = await res.json();
 
       if (res.ok && data?.success !== false) {
-        showToast('Order placed successfully!', 'success');
+        const saved = data?.data || data?.order || (isEditing ? { ...editingOrder, items } : null);
+        showToast(isEditing ? 'Order updated!' : 'Order placed successfully!', 'success');
 
         // Save the customer (name OR phone is enough). Does not block the order.
         if (nameToSave || phoneKey(phoneToSave).length >= 7) saveCustomer(nameToSave, phoneToSave, addressToSave);
 
-        setCart([]);
-        setCustomerName('');
-        setCustomerPhone('');
-        setCustomerAddress('');
-        setTableNumber('');
-        setOrderNote('');
-        setDeliveryChargeInput('');
-        setPaidVia('');
-        switchedByUser.current = false;
-        setOrderBy('table');
         setShowConfirmModal(false);
         setConfirmChecked(false);
         onOrderCreated?.();
+
+        if (then === 'bill' && saved && onBill) {
+          onBill(saved); // 💳 straight to the bill (same page)
+        } else if (onDone) {
+          onDone(saved, isEditing ? 'updated' : 'created'); // ← back to the board
+        } else {
+          setCart([]);
+          setCustomerName('');
+          setCustomerPhone('');
+          setCustomerAddress('');
+          setTableNumber('');
+          setOrderNote('');
+          setDeliveryChargeInput('');
+          setPaidVia('');
+          switchedByUser.current = false;
+          setOrderBy('table');
+        }
       } else {
-        showToast(data?.message || 'Failed to place order. Please retry.', 'error');
+        showToast(data?.message || (isEditing ? 'Failed to update order.' : 'Failed to place order. Please retry.'), 'error');
       }
     } catch (err) {
       console.error('🔴 Order submission failed:', err);
@@ -746,6 +870,15 @@ pickCustomer(customerSuggestions[highlight]);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // 💳 Bill an open order: unsaved changes are saved first
+  const billNow = () => {
+    if (!isEditing || !onBill) return;
+    if (changes.dirty) {
+      if (cart.length === 0) return showToast('Add at least one item.', 'error');
+      placeOrder('bill');
+    } else onBill(editingOrder);
   };
 
   // ==========================================
@@ -787,23 +920,60 @@ pickCustomer(customerSuggestions[highlight]);
         <div ref={orderPanelRef} className="order-2 scroll-mt-4 lg:order-1 lg:col-span-5">
           <div className={`${CARD} flex flex-col gap-5 p-5 lg:sticky lg:top-4`}>
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/30">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-3">
+                {onBack && (
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    disabled={isSubmitting}
+                    aria-label="Back to tables"
+                    title="Back to tables"
+                    className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5 rotate-180" />
+                  </button>
+                )}
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/30">
                   <ShoppingCart className="h-5 w-5" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900">New Order</h2>
-                  <p className="text-xs text-slate-500">Pick items from the menu, then confirm.</p>
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold leading-tight tracking-tight text-slate-900">
+                    {isEditing ? 'Edit Order' : 'New Order'}
+                    {(selectedTable?.tableName || (orderBy === 'name' && customerName.trim())) && (
+                      <span className="text-purple-600"> · {orderBy === 'table' ? selectedTable?.tableName || tableNumber : customerName.trim()}</span>
+                    )}
+                  </h2>
+                  <p className="truncate text-xs text-slate-500">
+                    {isEditing
+                      ? `${String(editingOrder.orderStatus || 'Pending')} · ${changes.dirty ? 'unsaved changes' : 'no changes yet'}`
+                      : 'Pick items from the menu, then confirm.'}
+                  </p>
                 </div>
               </div>
               <span
                 key={totalItemsCount}
-                className="co-bump rounded-full bg-purple-50 px-3 py-1 font-mono text-xs font-bold text-purple-700 ring-1 ring-inset ring-purple-100"
+                className="co-bump shrink-0 rounded-full bg-purple-50 px-3 py-1 font-mono text-xs font-bold text-purple-700 ring-1 ring-inset ring-purple-100"
               >
                 {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}
               </span>
             </div>
+
+            {/* 💳 Open order → bill it from here (all Create Bill features) */}
+            {isEditing && canBill && onBill && (
+              <button
+                type="button"
+                onClick={billNow}
+                disabled={isSubmitting || cart.length === 0}
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-left text-white shadow-lg shadow-emerald-500/25 transition hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span>
+                  <span className="block text-sm font-extrabold">{changes.dirty ? 'Save & create bill' : 'Create bill & take payment'}</span>
+                  <span className="block text-[11px] font-medium text-emerald-50">Discount, VAT, Cash / QR / split, loyalty, print</span>
+                </span>
+                <span className="font-mono text-base font-extrabold">{formatNPR(totalWithDelivery)}</span>
+              </button>
+            )}
 
             {/* Staff */}
             {staffId && (
@@ -1674,8 +1844,14 @@ pickCustomer(customerSuggestions[highlight]);
                   <CheckCircle className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Confirm order</h3>
-                  <p className="text-xs text-slate-500">Check everything before sending it to the kitchen.</p>
+                  <h3 className="text-base font-bold text-slate-900">{isEditing ? 'Update order' : 'Confirm order'}</h3>
+                  <p className="text-xs text-slate-500">
+                    {isEditing
+                      ? changes.added.length
+                        ? `New for the kitchen: ${changes.added.join(', ')}`
+                        : 'Check the changes before saving.'
+                      : 'Check everything before sending it to the kitchen.'}
+                  </p>
                 </div>
               </div>
               <button
@@ -1774,12 +1950,12 @@ pickCustomer(customerSuggestions[highlight]);
                   className="mt-0.5 h-4 w-4 cursor-pointer accent-purple-600"
                 />
                 <span className="text-xs font-medium text-amber-900">
-                  The items and {orderBy === 'table' ? 'table' : 'customer name'} are correct. Place this order.
+                  The items and {orderBy === 'table' ? 'table' : 'customer name'} are correct. {isEditing ? 'Save the changes.' : 'Place this order.'}
                 </span>
               </label>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-slate-100 bg-white px-6 py-4">
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-6 py-4">
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
@@ -1788,21 +1964,32 @@ pickCustomer(customerSuggestions[highlight]);
               >
                 Go back
               </button>
+              {canBill && onBill && (
+                <button
+                  type="button"
+                  onClick={() => placeOrder('bill')}
+                  disabled={!confirmChecked || isSubmitting}
+                  title="Save the order and open the bill at once"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-all hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isEditing ? 'Update & bill' : 'Place & bill'}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={placeOrder}
+                onClick={() => placeOrder()}
                 disabled={!confirmChecked || isSubmitting}
                 className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-br from-purple-600 to-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-purple-500/30 transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:bg-none disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Placing order...
+                    {isEditing ? 'Saving...' : 'Placing order...'}
                   </>
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4" />
-                    Place order
+                    {isEditing ? 'Update order' : 'Place order'}
                   </>
                 )}
               </button>
