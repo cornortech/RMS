@@ -5,6 +5,11 @@ const billItemSchema = mongoose.Schema({
         type: String,
         required: true,
     },
+    // 📝 Short menu description printed under the item name (optional)
+    description: {
+        type: String,
+        default: "",
+    },
     quantity: {
         type: Number,
         required: true,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 import {
   Flame,
   ChefHat,
@@ -479,6 +480,7 @@ function TicketCard({
   onReprint: (order: Order) => void;
   isUpdating: boolean;
 }) {
+  const menuDesc = useMenuDescriptions(); // 📝 description for old orders
   const lane = LANES.find((l) => l.status === order.orderStatus);
   const styles = LANE_STYLES[order.orderStatus] || LANE_STYLES.Pending;
   const age = minutesSince(order.updatedAt || order.createdAt, now);
@@ -551,9 +553,7 @@ function TicketCard({
               <span className="font-mono text-base font-bold text-violet-600 shrink-0 w-6 text-right">
                 {item.quantity}×
               </span>
-              <span className="text-base font-medium text-gray-800 leading-tight">
-                {item.itemName}
-              </span>
+              <ItemLabel variant="kitchen" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
             </div>
           ))}
         </div>

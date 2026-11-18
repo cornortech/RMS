@@ -11,6 +11,7 @@ Star, Gift, Crown, Award, UserPlus, Phone, Bike, MapPin,
 import BillQR, { WalletId } from './BillQR';
 import { printReceipt } from '../utils/printReceipt';
 import { toBS } from '../utils/nepaliDate';
+import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 
 // ==========================================
 // CONFIG
@@ -43,6 +44,7 @@ const getLoggedInUser = () => {
 
 interface BillItem {
   itemName: string;
+  description?: string; // 📝
   quantity: number;
   rate: number;
   total: number;
@@ -1681,6 +1683,7 @@ function MergedBillModal({
   loyalty?: BillLoyalty | null;
   deliveryMode?: boolean;
 }) {
+  const menuDesc = useMenuDescriptions(); // 📝
   // A single delivery bill keeps its real invoice number
   const invoiceLabel =
     deliveryMode && group.bills.length === 1
@@ -1829,10 +1832,12 @@ function MergedBillModal({
                 <tbody className="divide-y divide-slate-200 border-b border-slate-300">
                   {group.mergedItems.map((item, idx) => (
                     <tr key={idx}>
-                      <td className="py-1 font-bold text-slate-950">{item.itemName}</td>
+                      <td className="py-1 pr-1 text-slate-950">
+                        <ItemLabel variant="print" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
+                      </td>
                       <td className="py-1 text-center font-mono">{item.quantity}</td>
-                      <td className="py-1 text-right font-mono">NPR {money(item.rate)}</td>
-                      <td className="py-1 text-right font-mono">NPR {money(item.total)}</td>
+                      <td className="py-1 pl-2 text-right font-mono">NPR {money(item.rate)}</td>
+                      <td className="py-1 pl-2 text-right font-mono">NPR {money(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1940,6 +1945,7 @@ function MergedBillModal({
 // mode="Pending"  → Pending Bills page (bills saved as "Pay later")
 // mode="Delivery" → Delivery Bills page (bills saved as "Delivery", money collected by the rider)
 export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { lang?: Lang; mode?: 'Pending' | 'Delivery' }) {
+  const menuDesc = useMenuDescriptions(); // 📝
   const isDeliveryMode = mode === 'Delivery';
   const user = getLoggedInUser();
   const restaurantId = user?.id ? String(user.id) : '';
@@ -2784,7 +2790,9 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
                       <tbody className="divide-y divide-slate-100">
                         {selectedGroup.mergedItems.map((item, idx) => (
                           <tr key={idx} className="transition-colors hover:bg-purple-50/40">
-                            <td className="px-5 py-3.5 font-semibold text-slate-800">{item.itemName}</td>
+                            <td className="px-5 py-3.5">
+                              <ItemLabel name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
+                            </td>
                             <td className="px-3 py-3.5 text-center">
                               <span className="rounded-lg bg-purple-50 px-2.5 py-1 font-mono text-xs font-bold text-purple-700">{item.quantity}</span>
                             </td>

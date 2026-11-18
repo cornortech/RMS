@@ -12,6 +12,7 @@ Star, Gift, Crown, Award, UserPlus, Phone, Users, User, UserPen, Bike, MapPin,
 import { printReceipt } from '../utils/printReceipt';
 
 import { toBS } from '../utils/nepaliDate';
+import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 
 // ==========================================
 // CONFIG
@@ -90,6 +91,7 @@ interface Order {
 
 interface BillItem {
   itemName: string;
+  description?: string; // 📝 printed under the name
   quantity: number;
   rate: number;
   total: number;
@@ -1543,6 +1545,7 @@ function PaymentQRModal({
 // ==========================================
 
 function BillModal({ bill, lang, onClose, preview = false }: { bill: any; lang: Lang; onClose: () => void; preview?: boolean }) {
+  const menuDesc = useMenuDescriptions(); // 📝
   const billItems: BillItem[] = bill?.items ?? [];
   const vatRate = bill?.vatRate ?? 0;
   const hasVat = vatRate > 0;
@@ -1703,10 +1706,12 @@ function BillModal({ bill, lang, onClose, preview = false }: { bill: any; lang: 
                   <tbody className="divide-y divide-dashed divide-black border-b-2 border-black">
                     {billItems.map((item: BillItem, idx: number) => (
                       <tr key={idx}>
-                        <td className="py-1 font-black">{item.itemName}</td>
+                        <td className="py-1 pr-1">
+                          <ItemLabel variant="print" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
+                        </td>
                         <td className="py-1 text-center font-mono">{item.quantity}</td>
-                        <td className="py-1 text-right font-mono">{money(item.rate)}</td>
-                        <td className="py-1 text-right font-mono">{money(item.total)}</td>
+                        <td className="py-1 pl-2 text-right font-mono">{money(item.rate)}</td>
+                        <td className="py-1 pl-2 text-right font-mono">{money(item.total)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1807,6 +1812,7 @@ function BillModal({ bill, lang, onClose, preview = false }: { bill: any; lang: 
 // ==========================================
 
 export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
+  const menuDesc = useMenuDescriptions(); // 📝 description for old orders
   const user = getLoggedInUser();
   const restaurantId = user?.id ? String(user.id) : '';
   const loyaltyRestaurantId = user?.id || user?.username ? String(user?.id || user?.username) : '';
@@ -2066,11 +2072,12 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
     if (!selectedOrder) return [];
     return (selectedOrder.items || []).map((i) => ({
       itemName: i.itemName,
+      description: pickDescription(menuDesc, i.itemName, i.description), // 📝 saved on the bill
       quantity: i.quantity,
       rate: i.itemPrice,
       total: i.itemPrice * i.quantity,
     }));
-  }, [selectedOrder]);
+  }, [selectedOrder, menuDesc]);
 
   const subtotal = useMemo(() => billItems.reduce((s, i) => s + i.total, 0), [billItems]);
 
@@ -2983,7 +2990,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
                       <tbody className="divide-y divide-slate-100">
                         {billItems.map((item, idx) => (
                           <tr key={idx} className="transition-colors hover:bg-purple-50/40">
-                            <td className="px-5 py-3.5 font-semibold text-slate-800">{item.itemName}</td>
+                            <td className="px-5 py-3.5">
+                              <ItemLabel name={item.itemName} desc={item.description} />
+                            </td>
                             <td className="px-3 py-3.5 text-center">
                               <span className="rounded-lg bg-purple-50 px-2.5 py-1 font-mono text-xs font-bold text-purple-700">
                                 {item.quantity}

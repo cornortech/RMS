@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useLang } from '../i18n';
+import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 
 // ==========================================
 // CONFIG
@@ -366,6 +367,7 @@ function SkeletonOrderCard() {
 // ==========================================
 
 export default function OrdersPage() {
+  const menuDesc = useMenuDescriptions(); // 📝 description for old orders
   const restaurantId = getLoggedInRestaurantId();
   const { tr } = useLang();
 
@@ -1058,12 +1060,12 @@ export default function OrdersPage() {
                     </div>
                     <ul className="op-scroll max-h-36 space-y-1.5 overflow-y-auto pr-1">
                       {(order.items || []).map((item, idx) => (
-                        <li key={idx} className="flex items-center justify-between gap-2 text-[13px]">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="flex h-5 min-w-[22px] items-center justify-center rounded-md bg-white px-1 font-mono text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
+                        <li key={idx} className="flex items-start justify-between gap-2 text-[13px]">
+                          <span className="flex min-w-0 items-start gap-2">
+                            <span className="mt-0.5 flex h-5 min-w-[22px] items-center justify-center rounded-md bg-white px-1 font-mono text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
                               {item.quantity}×
                             </span>
-                            <span className="truncate font-medium text-slate-800">{item.itemName}</span>
+                            <ItemLabel variant="compact" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
                           </span>
                           <span className="shrink-0 font-mono text-xs text-slate-500">
                             {(Number(item.itemPrice) * Number(item.quantity)).toFixed(2)}

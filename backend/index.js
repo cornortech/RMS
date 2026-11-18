@@ -1273,6 +1273,7 @@ app.post("/api/bills", requireAuth, async (req, res) => {
             paidAt: isPaidMethod(getValue(formData.paymentMethod, "Cash")) ? billDate : null,
             items: (formData.items || []).map(i => ({
                 itemName: i.itemName || "Unknown Item",
+                description: typeof i.description === "string" ? i.description.trim().slice(0, 300) : "", // 📝
                 quantity: parseNum(getValue(i.quantity, 1)),
                 rate: parseNum(getValue(i.rate, 0)),
                 total: parseNum(getValue(i.total, 0)),

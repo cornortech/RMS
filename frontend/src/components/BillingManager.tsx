@@ -21,6 +21,7 @@ import { Sale, Customer } from '../types';
 import { TRANSLATIONS } from '../translations';
 import { printReceipt } from '../utils/printReceipt';
 import { toBS } from '../utils/nepaliDate';
+import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '')).trim().replace(/\/+$/, '');
 const BILLS_URL = `${API_BASE}/api/bills`;
@@ -46,6 +47,7 @@ interface BillingManagerProps {
 
 interface RawBillItem {
   itemName: string;
+  description?: string; // 📝
   quantity: number;
   rate: number;
   total: number;
@@ -162,6 +164,7 @@ function InvoiceModal({
     }
   };
   const billItems: RawBillItem[] = bill?.items ?? [];
+  const menuDesc = useMenuDescriptions(); // 📝 description for old bills
   const vatRate = bill?.vatRate ?? (bill?.taxableAmount > 0 ? (bill.vatCollected / bill.taxableAmount) * 100 : 0);
   const hasVat = (bill?.vatCollected ?? 0) > 0;
   const discountPercent = bill?.discountPercent ?? (bill?.subtotal > 0 ? (bill.discount / bill.subtotal) * 100 : 0);
@@ -305,10 +308,12 @@ function InvoiceModal({
                 <tbody className="divide-y divide-dashed divide-black border-b-2 border-black">
                   {billItems.map((item, idx) => (
                     <tr key={idx}>
-                      <td className="py-0.5 font-black">{item.itemName}</td>
+                      <td className="py-0.5 pr-1">
+                        <ItemLabel variant="print" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
+                      </td>
                       <td className="py-0.5 text-center font-mono">{item.quantity}</td>
-                      <td className="py-0.5 text-right font-mono">{money(item.rate)}</td>
-                      <td className="py-0.5 text-right font-mono">{money(item.total)}</td>
+                      <td className="py-0.5 pl-2 text-right font-mono">{money(item.rate)}</td>
+                      <td className="py-0.5 pl-2 text-right font-mono">{money(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
