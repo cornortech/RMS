@@ -899,6 +899,26 @@ function StaffLoginGate({
 /*  App                                                                */
 /* ------------------------------------------------------------------ */
 
+// 🧭 Smooth sidebar: the panel slides open with a soft ease, then the names fade in.
+const SIDEBAR_SMOOTH_CSS = `
+#app-sidebar .sb-panel {
+  transition: width 380ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 380ms ease;
+  will-change: width;
+}
+#app-sidebar .sb-panel :is(p, span) { white-space: nowrap; }
+#app-sidebar .sb-open :is(p, span):not([aria-hidden="true"]) {
+  animation: sbLabelIn 300ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+@keyframes sbLabelIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-sidebar .sb-panel { transition: none; }
+  #app-sidebar .sb-open :is(p, span) { animation: none; }
+}
+`;
+
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [sales] = useState<Sale[]>([]);
@@ -1335,10 +1355,11 @@ const { lang, setLang } = useLang();
           }
         }}
       >
+        <style>{SIDEBAR_SMOOTH_CSS}</style>
         <div
-          className={`absolute inset-y-0 left-0 overflow-hidden bg-white transition-[width,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-            sidebarCollapsed ? 'w-[84px]' : 'w-72'
-          } ${!sidebarPinned && !sidebarCollapsed ? 'shadow-[12px_0_40px_-12px_rgba(76,29,149,0.28)]' : ''}`}
+          className={`sb-panel absolute inset-y-0 left-0 overflow-hidden bg-white ${sidebarCollapsed ? 'w-[84px]' : 'sb-open w-72'} ${
+            !sidebarPinned && !sidebarCollapsed ? 'shadow-[12px_0_40px_-12px_rgba(76,29,149,0.28)]' : 'shadow-none'
+          }`}
         >
           <Sidebar {...sidebarProps} collapsed={sidebarCollapsed} />
         </div>
