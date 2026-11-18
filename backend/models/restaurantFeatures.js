@@ -12,6 +12,8 @@ const restaurantFeaturesSchema = new mongoose.Schema(
     vatRate: { type: Number, default: 13, min: 0, max: 100 },
         // ON → Kitchen Staff and Managers get a pop-up + sound for every new kitchen order
     kitchenAlerts: { type: Boolean, default: false },
+    // 🧭 SIDEBAR MENU: pages switched OFF for this restaurant (hidden from everyone). Empty = show all.
+    hiddenPages: { type: [String], default: [] },
   },
   { timestamps: true }
 );

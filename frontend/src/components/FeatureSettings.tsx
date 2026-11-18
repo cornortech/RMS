@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, GlassWater, CheckCircle2, AlertCircle, Percent, ChefHat, Bell } from 'lucide-react';
+import {
+  Loader2, GlassWater, CheckCircle2, AlertCircle, Percent, ChefHat, Bell,
+  PanelLeft, RotateCcw, ShoppingBag, ClipboardList, Bike, LayoutGrid, Flame, Utensils, Boxes,
+  FilePlus, Clock, TrendingUp, ShieldCheck, Users, Fingerprint,
+} from 'lucide-react';
+import { setHiddenPagesLocal } from '../utils/hiddenPages'; // 🧭 sidebar menu
 import { popupPermission, askPopupPermission, showPopup } from '../utils/alerts';
 
 // =====================================================================
@@ -144,6 +149,8 @@ export default function FeatureSettings() {
 
       <DevicePopups />
 
+      <SidebarMenuSettings />
+
       {message && (
         <p
           className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
@@ -246,6 +253,201 @@ function FeatureRow({
       >
         <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
       </button>
+    </div>
+    
+  );
+}
+
+
+
+// =====================================================================
+// 🧭 SIDEBAR MENU — show / hide pages for this restaurant
+//   OFF = the page is hidden from the sidebar for EVERY staff member and can't be opened.
+//   Dashboard and Settings are always shown. Default: everything ON.
+// =====================================================================
+const ROLE_PAGES: Record<string, string[]> = {
+  Manager: ['dashboard', 'pos', 'inventory', 'billing', 'staff', 'settings', 'orders', 'tables', 'kitchen', 'createbill', 'totalorder', 'unpaidbill', 'deliverybill', 'stock', 'notifications', 'delivery', 'attendance', 'foodcost'],
+  Waiter: ['inventory', 'orders', 'pos', 'notifications', 'delivery'],
+  'Kitchen Staff': ['kitchen', 'stock', 'delivery', 'foodcost'],
+  Cashier: ['createbill', 'tables', 'billing', 'totalorder', 'unpaidbill', 'deliverybill', 'stock', 'delivery', 'foodcost'],
+};
+
+const MENU_GROUPS: { title: string; pages: { key: string; name: string; info: string; icon: React.ElementType }[] }[] = [
+  {
+    title: 'Operations',
+    pages: [
+      { key: 'pos', name: 'Create Order', info: 'Waiters take orders', icon: ShoppingBag },
+      { key: 'orders', name: 'Orders', info: 'All running orders', icon: ClipboardList },
+      { key: 'notifications', name: 'Notifications', info: 'Waiter calls from the table QR', icon: Bell },
+      { key: 'delivery', name: 'Delivery', info: 'Online orders and riders', icon: Bike },
+      { key: 'tables', name: 'Tables', info: 'Table list and status', icon: LayoutGrid },
+      { key: 'kitchen', name: 'Kitchen', info: 'Kitchen Display (KOT)', icon: Flame },
+      { key: 'inventory', name: 'Menu', info: 'Menu items, combos, offers', icon: Utensils },
+      { key: 'stock', name: 'Stock', info: 'Stock / inventory', icon: Boxes },
+    ],
+  },
+  {
+    title: 'Billing',
+    pages: [
+      { key: 'createbill', name: 'Create Bill', info: 'Make bills for served orders', icon: FilePlus },
+      { key: 'unpaidbill', name: 'Pending Bills', info: 'Pay-later bills', icon: Clock },
+      { key: 'deliverybill', name: 'Delivery Bills', info: 'Collect from riders', icon: Bike },
+      { key: 'totalorder', name: 'Total Sales', info: 'Daily sales list', icon: TrendingUp },
+      { key: 'foodcost', name: 'Food Preparation Cost', info: 'Cost and profit', icon: ChefHat },
+      { key: 'billing', name: 'Billing & VAT Audit', info: 'All bills, VAT report', icon: ShieldCheck },
+    ],
+  },
+  {
+    title: 'Administration',
+    pages: [
+      { key: 'staff', name: 'Manage Staff', info: 'Add / edit staff', icon: Users },
+      { key: 'attendance', name: 'Attendance', info: 'Staff check-in / out', icon: Fingerprint },
+    ],
+  },
+];
+const ALL_KEYS = MENU_GROUPS.flatMap((g) => g.pages.map((p) => p.key));
+
+function SidebarMenuSettings() {
+  const [hidden, setHidden] = useState<string[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(FEATURES_URL);
+        const json = await res.json();
+        setHidden(Array.isArray(json?.data?.hiddenPages) ? json.data.hiddenPages : []);
+      } catch {
+        setHidden([]);
+      }
+    })();
+  }, []);
+
+  // A role must keep at least one page, or that staff would see an empty screen
+  const emptyRoles = (list: string[]) =>
+    Object.entries(ROLE_PAGES)
+      .filter(([, pages]) => !pages.some((p) => p === 'dashboard' || p === 'settings') && pages.every((p) => list.includes(p)))
+      .map(([role]) => role);
+
+  const save = async (next: string[]) => {
+    if (saving || !hidden) return;
+    const lost = emptyRoles(next);
+    if (lost.length) {
+      setMsg({ ok: false, text: `${lost.join(', ')} would have no pages left. Keep at least one of their pages ON.` });
+      return;
+    }
+    const before = hidden;
+    setHidden(next);
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch(FEATURES_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hiddenPages: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.message || 'Could not save.');
+      const saved: string[] = json.data?.hiddenPages || [];
+      setHidden(saved);
+      setHiddenPagesLocal(saved); // this screen's sidebar changes at once
+      setMsg({ ok: true, text: 'Saved. The sidebar is updated for all staff.' });
+    } catch (e: any) {
+      setHidden(before);
+      setMsg({ ok: false, text: e.message || 'Could not save.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!hidden) {
+    return (
+      <div className="flex justify-center py-8 text-purple-500">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  const shown = ALL_KEYS.filter((k) => !hidden.includes(k)).length;
+  const toggle = (key: string) => save(hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key]);
+  const usedBy = (key: string) => Object.entries(ROLE_PAGES).filter(([, p]) => p.includes(key)).map(([r]) => r);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" id="sidebar-menu-settings">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white">
+            <PanelLeft className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-bold text-slate-900">Sidebar menu</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+              Turn OFF the pages your restaurant doesn't use. They are hidden from the sidebar for all staff. Turn ON to show them again. Dashboard and Settings are always shown.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-1.5 w-28 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-purple-600 transition-all" style={{ width: `${(shown / ALL_KEYS.length) * 100}%` }} />
+              </div>
+              <span className="text-[11px] font-bold text-slate-500">{shown} of {ALL_KEYS.length} pages shown</span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => save([])}
+          disabled={saving || hidden.length === 0}
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-purple-200 px-3 py-2 text-xs font-bold text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Show all
+        </button>
+      </div>
+
+      <div className="mt-5 space-y-5">
+        {MENU_GROUPS.map((g) => (
+          <div key={g.title}>
+            <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">{g.title}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {g.pages.map((p) => {
+                const on = !hidden.includes(p.key);
+                const Icon = p.icon;
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={`${p.name}: ${on ? 'shown' : 'hidden'}`}
+                    disabled={saving}
+                    onClick={() => toggle(p.key)}
+                    className={`group flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-all disabled:cursor-wait ${
+                      on ? 'border-purple-200 bg-purple-50/50 hover:border-purple-300' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${on ? 'bg-white text-purple-600 ring-1 ring-purple-100' : 'bg-slate-200/70 text-slate-400'}`}>
+                      <Icon className="h-[18px] w-[18px]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-sm font-bold ${on ? 'text-slate-900' : 'text-slate-400 line-through decoration-slate-300'}`}>{p.name}</span>
+                      <span className="block truncate text-[11px] text-slate-500">{p.info} · {usedBy(p.key).join(', ')}</span>
+                    </span>
+                    <span className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-purple-600' : 'bg-slate-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {msg && (
+        <p className={`mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${msg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+          {msg.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          {msg.text}
+        </p>
+      )}
     </div>
   );
 }

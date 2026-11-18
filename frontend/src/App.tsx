@@ -27,6 +27,7 @@ import LandingPage from './components/LandingPage';
 import AdminDashboard from './components/AdminDashboard';
 import { startSessionTracking, endSession } from './utils/sessionTracker'; // 📋 open / close log
 import { startLiveSync, stopLiveSync } from './utils/liveSync'; // 🔄 live updates (no F5)
+import { useHiddenPages } from './utils/hiddenPages'; // 🧭 Settings → Features → Sidebar menu
 import StaffManager from './components/StaffManager';
 import Attendance from './components/Attendance';
 import FoodCost from './components/FoodCost'; // 🍳 Food Preparation Cost
@@ -468,7 +469,10 @@ function Sidebar({
         {groups.map((group) => (
           <div key={group.key} role="group" aria-label={group.label[lang]}>
             {compact ? (
-              <div className="mx-3 mb-2.5 h-px bg-purple-100/80" aria-hidden="true" />
+              // Same height as the group title → items don't move when the sidebar opens
+              <div className="mx-3 mb-2 flex h-[15px] items-center" aria-hidden="true">
+                <span className="h-px w-full bg-purple-100/80" />
+              </div>
             ) : (
               <p className="px-3 mb-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
                 {group.label[lang]}
@@ -488,7 +492,7 @@ function Sidebar({
                       aria-label={compact ? label : undefined}
                       aria-current={active ? 'page' : undefined}
                       className={`group relative w-full flex items-center gap-3 rounded-xl text-[13px] font-semibold transition-all duration-200 cursor-pointer active:scale-[0.98] ${FOCUS_RING} ${
-                        compact ? 'justify-center py-3' : 'px-3 py-2.5'
+                        compact ? 'min-h-[40px] justify-center py-2.5' : 'min-h-[40px] px-3 py-2.5'
                       } ${
                         active
                           ? 'bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
@@ -976,6 +980,20 @@ const { lang, setLang } = useLang();
   });
   const [staffPayload, setStaffPayload] = useState<{ id: string; role: StaffRole; RESTAURANTName: string } | null>(null);
 
+  // 🧭 Pages this restaurant switched OFF in Settings → Features → Sidebar menu
+  const hiddenPages = useHiddenPages(staffPayload ? `${staffPayload.RESTAURANTName}|${staffPayload.id}` : '');
+  // If the page you are on gets switched OFF → go to your first page that is still ON
+  useEffect(() => {
+    if (!staffPayload) return;
+    const cfg = ROLE_ACCESS[staffPayload.role];
+    if (!cfg) return;
+    const ok = (v: AppView) => cfg.pages.includes(v) && !hiddenPages.includes(v);
+    if (!ok(currentView)) {
+      const next = [cfg.defaultView, ...cfg.pages].find(ok);
+      if (next) setCurrentView(next);
+    }
+  }, [hiddenPages, staffPayload, currentView]);
+
   const [Customers, setCustomers] = useState<Customer[]>([]);
   const [invoiceToView, setInvoiceToView] = useState<Sale | null>(null);
 
@@ -1294,7 +1312,8 @@ const { lang, setLang } = useLang();
   const staffRole: StaffRole = staffPayload?.role ?? 'Waiter';
   const tone = ROLE_TONE[staffRole];
   const legacyRole = LEGACY_ROLE_MAP[staffRole];
-  const canAccess = (view: AppView) => ROLE_ACCESS[staffRole].pages.includes(view);
+  // Allowed for this role AND not switched OFF in Settings → Features → Sidebar menu
+  const canAccess = (view: AppView) => ROLE_ACCESS[staffRole].pages.includes(view) && !hiddenPages.includes(view);
   const activeRESTAURANTName = staffPayload?.RESTAURANTName || currentUserPayload?.RESTAURANTName || '';
 
   const labelFor = (item: NavItem) => (item.view === 'dashboard' ? t.dashboard : item.label[lang]);
