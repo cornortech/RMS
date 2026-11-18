@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, LayoutGrid, Flame, Utensils,
   Boxes, FilePlus, Clock, TrendingUp, ShieldCheck, Users, Settings,
   FileText, Printer, X, LogOut, Menu, Lock, User2, AlertCircle, Loader2,
-  Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer,
+  Eye, EyeOff, PanelLeftClose, PanelLeftOpen, ChevronRight, Repeat, Timer, Pin, PinOff,
    Languages, ArrowLeft, Store, KeyRound,Bell,
    Bike, Fingerprint, ChefHat,
 } from 'lucide-react';
@@ -906,9 +906,23 @@ const { lang, setLang } = useLang();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const alertCounts = useAlertCounts();
   const alertTotal = alertCounts.notifications + alertCounts.delivery + alertCounts.kitchen;
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem('sidebarCollapsed') === '1'; } catch { return false; }
+  // 🧭 SIDEBAR: small (icons only) by default → opens while the mouse is on it → closes when it leaves.
+  //    "Pin" button in the header keeps it open (saved on this device). Good for touch screens.
+  const [sidebarPinned, setSidebarPinned] = useState<boolean>(() => {
+    try { return localStorage.getItem('sidebarPinned') === '1'; } catch { return false; }
   });
+  const [sidebarHover, setSidebarHover] = useState(false);
+  const sidebarTimer = useRef<number | undefined>(undefined);
+  const sidebarCollapsed = !sidebarPinned && !sidebarHover;
+  const openSidebarSoon = () => {
+    window.clearTimeout(sidebarTimer.current);
+    sidebarTimer.current = window.setTimeout(() => setSidebarHover(true), 120); // tiny wait → no accidental open
+  };
+  const closeSidebarSoon = (wait = 220) => {
+    window.clearTimeout(sidebarTimer.current);
+    sidebarTimer.current = window.setTimeout(() => setSidebarHover(false), wait); // tiny wait → no flicker
+  };
+  useEffect(() => () => window.clearTimeout(sidebarTimer.current), []);
   // No login saved (a visitor or Google) → skip the loading screen so the product page shows at once
   const [splashDone, setSplashDone] = useState(() => {
     try { return !localStorage.getItem('authToken'); } catch { return false; }
@@ -971,11 +985,12 @@ const { lang, setLang } = useLang();
   }, []);
 
   const toggleSidebar = () => {
-    setSidebarCollapsed((c) => {
-      const next = !c;
-      try { localStorage.setItem('sidebarCollapsed', next ? '1' : '0'); } catch { /* ignore */ }
+    setSidebarPinned((p) => {
+      const next = !p;
+      try { localStorage.setItem('sidebarPinned', next ? '1' : '0'); } catch { /* ignore */ }
       return next;
     });
+    setSidebarHover(false);
   };
 
   // Session verification
@@ -1300,13 +1315,33 @@ const { lang, setLang } = useLang();
       </a>
 
       {/* DESKTOP SIDEBAR */}
+      {/* The outer box keeps its place (84px, or 288px when pinned) so the page never jumps.
+          The inner panel grows OVER the page while the mouse is on it. */}
       <aside
-        className={`relative z-10 hidden md:block sticky top-0 h-screen shrink-0 transition-[width] duration-300 ease-out ${
-          sidebarCollapsed ? 'w-[84px]' : 'w-72'
+        className={`relative z-30 hidden md:block sticky top-0 h-screen shrink-0 transition-[width] duration-300 ease-out ${
+          sidebarPinned ? 'w-72' : 'w-[84px]'
         }`}
         id="app-sidebar"
+        onMouseEnter={() => !sidebarPinned && openSidebarSoon()}
+        onMouseLeave={() => !sidebarPinned && closeSidebarSoon()}
+        onFocus={() => !sidebarPinned && setSidebarHover(true)}
+        onBlur={(e) => {
+          if (!sidebarPinned && !e.currentTarget.contains(e.relatedTarget as Node | null)) closeSidebarSoon(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && !sidebarPinned) {
+            setSidebarHover(false);
+            (document.activeElement as HTMLElement | null)?.blur();
+          }
+        }}
       >
-        <Sidebar {...sidebarProps} collapsed={sidebarCollapsed} />
+        <div
+          className={`absolute inset-y-0 left-0 overflow-hidden bg-white transition-[width,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            sidebarCollapsed ? 'w-[84px]' : 'w-72'
+          } ${!sidebarPinned && !sidebarCollapsed ? 'shadow-[12px_0_40px_-12px_rgba(76,29,149,0.28)]' : ''}`}
+        >
+          <Sidebar {...sidebarProps} collapsed={sidebarCollapsed} />
+        </div>
       </aside>
 
       {/* MAIN VIEWPORT */}
@@ -1336,14 +1371,14 @@ const { lang, setLang } = useLang();
             <button
               onClick={toggleSidebar}
               className={`hidden md:flex p-2.5 rounded-xl border border-purple-100 bg-white text-slate-500 hover:text-purple-700 hover:bg-purple-50 active:scale-[0.96] transition-all cursor-pointer ${FOCUS_RING}`}
-              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarPinned ? 'Unpin sidebar (open on hover)' : 'Pin sidebar open'}
+              aria-pressed={sidebarPinned}
               aria-controls="app-sidebar"
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarPinned ? 'Unpin sidebar — it will open when you point at it' : 'Pin sidebar open'}
             >
-              {sidebarCollapsed
-                ? <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
-                : <PanelLeftClose className="h-5 w-5" aria-hidden="true" />}
+              {sidebarPinned
+                ? <PinOff className="h-5 w-5" aria-hidden="true" />
+                : <Pin className="h-5 w-5" aria-hidden="true" />}
             </button>
 
             <div className="flex items-center gap-3 min-w-0">
