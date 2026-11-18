@@ -34,6 +34,8 @@ import {
 import { createPortal } from 'react-dom';
 import { useLang } from '../i18n';
 import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
+import { HandPlatter, Undo2 } from 'lucide-react';
+import { lineState, orderProgress } from '../utils/kitchenItems'; // 🍳 serve one item at a time
 
 // ==========================================
 // CONFIG
@@ -378,6 +380,7 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [servingKey, setServingKey] = useState<string | null>(null); // 🍳 "orderId:index" being served
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [voidArmedId, setVoidArmedId] = useState<string | null>(null);
@@ -508,6 +511,43 @@ export default function OrdersPage() {
       showToast('Could not reach the server. Please try again.', 'error');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // ==========================================
+  // 🍳 SERVE ONE ITEM (only what the kitchen finished) — the rest of the order stays as it is
+  // ==========================================
+  const serveItem = async (order: Order, index: number, action: 'serve' | 'undo' = 'serve') => {
+    const item = order.items[index];
+    if (!item) return;
+    setServingKey(`${order._id}:${index}`);
+    try {
+      const res = await fetch(`${ORDERS_URL}/${order._id}/items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, lines: [{ index, itemName: item.itemName }] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success && data.data) {
+        setOrders((prev) =>
+          prev.map((o) => (o._id === order._id ? { ...o, items: data.data.items, orderStatus: data.data.orderStatus } : o))
+        );
+        showToast(
+          action === 'undo'
+            ? `${item.itemName}: serve undone.`
+            : data.data.orderStatus === 'Served'
+            ? `${item.itemName} served — whole order served.`
+            : `${item.itemName} served.`,
+          'success'
+        );
+      } else {
+        showToast(data?.message || 'Could not serve this item.', 'error');
+        fetchOrders(true);
+      }
+    } catch {
+      showToast('Could not reach the server. Please try again.', 'error');
+    } finally {
+      setServingKey(null);
     }
   };
 
@@ -1060,22 +1100,76 @@ export default function OrdersPage() {
                   <div className="mt-4 rounded-xl bg-slate-50/80 p-3 ring-1 ring-inset ring-slate-100">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Items</span>
-                      <span className="font-mono text-[10px] font-bold text-slate-500">{itemCount} total</span>
+                      {(() => {
+                        const p = orderProgress(order as any); // 🍳 2 of 5 served
+                        return isActive && p.total > 0 ? (
+                          <span className="font-mono text-[10px] font-bold text-slate-500">
+                            <span className="text-emerald-600">{p.ready}</span>/{p.total} ready · <span className="text-sky-600">{p.served}</span>/{p.total} served
+                          </span>
+                        ) : (
+                          <span className="font-mono text-[10px] font-bold text-slate-500">{itemCount} total</span>
+                        );
+                      })()}
                     </div>
-                    <ul className="op-scroll max-h-36 space-y-1.5 overflow-y-auto pr-1">
-                      {(order.items || []).map((item, idx) => (
-                        <li key={idx} className="flex items-start justify-between gap-2 text-[13px]">
-                          <span className="flex min-w-0 items-start gap-2">
-                            <span className="mt-0.5 flex h-5 min-w-[22px] items-center justify-center rounded-md bg-white px-1 font-mono text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
-                              {item.quantity}×
+                    <ul className="op-scroll max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                      {(order.items || []).map((item, idx) => {
+                        const st = lineState(item as any, order.orderStatus); // 🍳 this item's own status
+                        const busy = servingKey === `${order._id}:${idx}`;
+                        const served = st.status === 'served';
+                        return (
+                          <li key={idx} className={`flex items-start justify-between gap-2 rounded-lg text-[13px] ${st.toServe > 0 && isActive ? 'bg-emerald-50/70 px-1.5 py-1 ring-1 ring-inset ring-emerald-100' : ''}`}>
+                            <span className={`flex min-w-0 items-start gap-2 ${served && isActive ? 'opacity-50' : ''}`}>
+                              <span className="mt-0.5 flex h-5 min-w-[22px] items-center justify-center rounded-md bg-white px-1 font-mono text-[10px] font-bold text-purple-700 ring-1 ring-inset ring-purple-100">
+                                {item.quantity}×
+                              </span>
+                              <span className="min-w-0">
+                                <ItemLabel variant="compact" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
+                                {(item as any).note && <span className="block truncate text-[11px] font-semibold text-amber-700">✎ {(item as any).note}</span>}
+                              </span>
                             </span>
-                            <ItemLabel variant="compact" name={item.itemName} desc={pickDescription(menuDesc, item.itemName, item.description)} />
-                          </span>
-                          <span className="shrink-0 font-mono text-xs text-slate-500">
-                            {(Number(item.itemPrice) * Number(item.quantity)).toFixed(2)}
-                          </span>
-                        </li>
-                      ))}
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              {isActive && (
+                                st.toServe > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => serveItem(order, idx)}
+                                    disabled={busy}
+                                    title={`Serve ${item.itemName} now (the rest of the order stays)`}
+                                    aria-label={`Serve ${item.itemName}`}
+                                    className={`inline-flex cursor-pointer items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-1 text-[11px] font-bold text-white shadow-sm transition hover:from-emerald-600 hover:to-teal-600 active:scale-95 disabled:cursor-wait disabled:opacity-60 ${FOCUS}`}
+                                  >
+                                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <HandPlatter className="h-3 w-3" />}
+                                    Serve{st.toServe < st.qty ? ` ${st.toServe}` : ''}
+                                  </button>
+                                ) : served ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => serveItem(order, idx, 'undo')}
+                                    disabled={busy}
+                                    title="Undo serve"
+                                    aria-label={`Undo serve ${item.itemName}`}
+                                    className={`inline-flex cursor-pointer items-center gap-1 rounded-lg bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700 ring-1 ring-inset ring-sky-200 transition hover:bg-sky-100 ${FOCUS}`}
+                                  >
+                                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                                    Served
+                                  </button>
+                                ) : (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+                                      st.status === 'cooking' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-amber-50 text-amber-700 ring-amber-200'
+                                    }`}
+                                  >
+                                    {st.status === 'cooking' ? (st.readyQty > 0 ? `Cooking ${st.readyQty}/${st.qty}` : 'Cooking') : 'Waiting'}
+                                  </span>
+                                )
+                              )}
+                              <span className="font-mono text-xs text-slate-500">
+                                {(Number(item.itemPrice) * Number(item.quantity)).toFixed(2)}
+                              </span>
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
 
