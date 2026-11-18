@@ -125,7 +125,7 @@ export default function ProfitSummary({ onOpen }: { onOpen?: () => void }) {
       {/* Today */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-6 text-white shadow-xl shadow-emerald-500/20 lg:col-span-5">
         <TrendingUp className="absolute -right-6 -top-6 h-32 w-32 text-white/10" />
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">Today’s profit</p>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">Net profit</p>
         {days === null ? (
           <Loader2 className="mt-4 h-6 w-6 animate-spin" />
         ) : (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import {
   RefreshCw,
   CheckCircle,
@@ -462,6 +463,9 @@ export default function OrdersPage() {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔄 New / changed orders show by themselves
+  useLiveRefresh(['orders', 'bills'], () => fetchOrders(true));
 
   // ==========================================
   // UPDATE STATUS (Served / Completed / Cancelled)

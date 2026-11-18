@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import axios from "axios";
 import {
   Plus,
@@ -184,8 +185,13 @@ const StockManagement: React.FC = () => {
     }
   };
 
+  // 🔄 Stock changes from other screens show by themselves
+  useLiveRefresh(['stocks'], () => {
+    if (restaurantId) fetchStocks(restaurantId);
+  });
+
   const fetchStocks = async (rid: string) => {
-    setLoading(true);
+    if (!quietReload()) setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}?restaurantId=${encodeURIComponent(rid)}`, getAuthHeaders());
       const allData: StockItem[] = res.data.data || [];

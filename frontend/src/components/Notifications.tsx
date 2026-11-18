@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { BellRing, CheckCheck, Check, Trash2, Volume2, VolumeX, Loader2, Inbox } from 'lucide-react';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
@@ -86,6 +87,9 @@ export default function Notifications() {
     const id = setInterval(load, REFRESH_EVERY_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  // 🔄 New waiter calls show at once
+  useLiveRefresh(['notifications'], load);
 
   // Show the count in the browser tab title, e.g. "(3) Notifications"
   useEffect(() => {

@@ -26,6 +26,7 @@ import LoginScreen from './components/LoginScreen';
 import LandingPage from './components/LandingPage';
 import AdminDashboard from './components/AdminDashboard';
 import { startSessionTracking, endSession } from './utils/sessionTracker'; // 📋 open / close log
+import { startLiveSync, stopLiveSync } from './utils/liveSync'; // 🔄 live updates (no F5)
 import StaffManager from './components/StaffManager';
 import Attendance from './components/Attendance';
 import FoodCost from './components/FoodCost'; // 🍳 Food Preparation Cost
@@ -1039,7 +1040,10 @@ const { lang, setLang } = useLang();
 
   // 📋 Tell the server this restaurant's app is open (closed on logout / tab close / no signal)
   useEffect(() => {
-    if (authState.isAuthenticated === true) startSessionTracking();
+    if (authState.isAuthenticated === true) {
+      startSessionTracking();
+      startLiveSync(); // 🔄
+    }
   }, [authState.isAuthenticated]);
 
   // Restore staff session for this restaurant
@@ -1099,6 +1103,7 @@ const { lang, setLang } = useLang();
       !window.confirm('Some orders/bills are saved on this device but NOT synced yet.\nThey will sync the next time this restaurant logs in here.\n\nLog out anyway?')
     ) return;
     await endSession('logout'); // 📋 log "closed — logged out" (needs the token, so before removing it)
+    stopLiveSync(); // 🔄
     localStorage.removeItem('offlineSessionUser');
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -180,6 +181,9 @@ export default function StaffManager({ RESTAURANTName: propRESTAURANTName, onClo
     fetchStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RESTAURANTName]);
+
+  // 🔄 Staff added / changed on another screen shows by itself
+  useLiveRefresh(['staff', 'admin'], fetchStaff);
 
   // Close drawer / modal with Escape
   useEffect(() => {

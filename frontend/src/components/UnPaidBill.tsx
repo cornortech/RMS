@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from 'react-dom';
 import {
   Receipt, Users, Hash, CheckCircle2, X, Printer, Loader2,
@@ -2005,6 +2006,9 @@ export default function UnpaidBill({ lang = 'en' as Lang, mode = 'Pending' }: { 
   useEffect(() => {
     fetchBills();
   }, [fetchBills]);
+
+  // 🔄 Pending / delivery bills update by themselves
+  useLiveRefresh(['bills', 'delivery'], fetchBills);
 
   const pendingBills = useMemo(() => allBills.filter((b) => b.paymentMethod === mode), [allBills, mode]);
   const groupedPending = useMemo(() => groupPendingBills(pendingBills, isDeliveryMode), [pendingBills, isDeliveryMode]);

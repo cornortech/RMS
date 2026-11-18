@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import {
   Database,
   Search,
@@ -243,7 +244,7 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
   // ==========================================
 
   const fetchMenuItems = async () => {
-    setLoading(true);
+    if (!quietReload()) setLoading(true);
     setLoadError('');
 
     const restaurantId = getLoggedInRestaurantId();
@@ -276,6 +277,9 @@ export default function MenuManager({ lang, currentUserRole }: MenuManagerProps)
     fetchMenuItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔄 Menu changes from other screens show by themselves
+  useLiveRefresh(['menu', 'menu-offers', 'food-cost'], fetchMenuItems);
 
   // Lock body scroll while the form modal is open
   useEffect(() => {

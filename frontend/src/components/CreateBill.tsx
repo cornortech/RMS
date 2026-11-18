@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from 'react-dom';
 import BillQR, { WalletId } from './BillQR';
 import {
@@ -1939,6 +1940,9 @@ export default function CreateBill({ lang = 'en' as Lang }: { lang?: Lang }) {
   useEffect(() => {
     fetchServedOrders();
   }, [fetchServedOrders]);
+
+  // 🔄 Served orders waiting for a bill update by themselves
+  useLiveRefresh(['orders', 'bills'], fetchServedOrders);
 
     // Load customers who already have pending bills (grouped by name)
   const fetchPendingCustomers = useCallback(async () => {

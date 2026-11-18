@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import {
   Search,
   ShoppingCart,
@@ -332,7 +333,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   // FETCH MENU + TABLES + CUSTOMERS
   // ==========================================
   const fetchMenu = async () => {
-    setMenuLoading(true);
+    if (!quietReload()) setMenuLoading(true);
     setMenuError('');
     try {
       const url = restaurantId ? `${MENU_URL}?restaurantId=${encodeURIComponent(restaurantId)}` : MENU_URL;
@@ -349,7 +350,7 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
   };
 
   const fetchTables = async () => {
-    setTablesLoading(true);
+    if (!quietReload()) setTablesLoading(true);
     setTablesError('');
     try {
       const url = restaurantId ? `${TABLES_URL}?restaurantId=${encodeURIComponent(restaurantId)}` : TABLES_URL;
@@ -442,6 +443,12 @@ export default function CreateOrder({ onOrderCreated }: CreateOrderProps) {
     fetchCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔄 Menu, prices, offers and table status update by themselves (your cart is kept)
+  useLiveRefresh(['menu', 'menu-offers', 'tables', 'orders', 'bills'], () => {
+    fetchMenu();
+    fetchTables();
+  });
 
   // Escape closes the confirm modal
   useEffect(() => {

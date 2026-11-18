@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { TrendingDown, RefreshCw, Loader2, Search, Tag, Layers, Lightbulb, Sparkles, CheckCircle2, AlertTriangle, StopCircle, ArrowRight } from 'lucide-react';
 import { OfferModal, ComboModal, OFFERS_URL, npr, type OfferTarget } from './OfferTools';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 
 // =====================================================================
 // 📉 DASHBOARD → SLOW-SELLING ITEMS (last 3 days: day before yesterday, yesterday, today)
@@ -90,6 +91,9 @@ export default function SlowSellers({ onOpenMenu }: { onOpenMenu?: () => void })
     const t = setInterval(load, 5 * 60 * 1000); // fresh every 5 minutes (and moves to the next day by itself)
     return () => clearInterval(t);
   }, [load]);
+
+  // 🔄 New bills / menu changes update the list by themselves
+  useLiveRefresh(['bills', 'menu', 'menu-offers'], load);
 
   const flash = (ok: boolean, text: string) => {
     setToast({ ok, text });

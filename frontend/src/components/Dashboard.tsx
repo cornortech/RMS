@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from 'react-dom';
 import {
   TrendingUp,
@@ -1298,7 +1299,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   const [billsError, setBillsError] = useState('');
 
   const fetchBills = async (rid: string) => {
-    setBillsLoading(true);
+    if (!quietReload()) setBillsLoading(true);
     setBillsError('');
     try {
       const res = await fetch(`${BILLS_URL}?restaurantId=${encodeURIComponent(rid)}`);
@@ -1327,7 +1328,7 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
   const [ordersLoading, setOrdersLoading] = useState(true);
 
   const fetchOrders = async (rid: string) => {
-    setOrdersLoading(true);
+    if (!quietReload()) setOrdersLoading(true);
     try {
       const res = await fetch(`${ORDERS_URL}?restaurantId=${encodeURIComponent(rid)}`);
       const result = await res.json();
@@ -1463,6 +1464,9 @@ export default function Dashboard({ lang, setView, onViewInvoice }: DashboardPro
     fetchStaff();
     fetchPlanTime(restaurantId);
   };
+
+  // 🔄 Update by itself when bills / orders / delivery / staff change anywhere
+  useLiveRefresh(['bills', 'orders', 'delivery', 'staff', 'admin'], refreshAll);
 
   // ---- daily totals ----
   const dayTotals = useMemo(() => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useLiveRefresh } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import ItemLabel, { useMenuDescriptions, pickDescription } from './ItemLabel'; // 📝 name + description
 import {
   Flame,
@@ -858,6 +859,9 @@ export default function KitchenDisplay() {
     const poll = window.setInterval(fetchOrders, POLL_MS);
     return () => window.clearInterval(poll);
   }, [fetchOrders]);
+
+  // 🔄 New tickets show at once (no waiting for the next check)
+  useLiveRefresh(['orders'], fetchOrders);
 
   // Manual reprint — always available from each ticket card, doesn't touch
   // printedIds/printedSignatures bookkeeping since it's user-initiated, not

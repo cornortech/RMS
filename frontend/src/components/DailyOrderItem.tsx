@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from "react-dom";
 import {
   X,
@@ -137,7 +138,7 @@ const TotalOrder: React.FC<TotalOrderProps> = ({ restaurantId }) => {
   }, [restaurantId]);
 
   const fetchOrders = async () => {
-    setLoading(true);
+    if (!quietReload()) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/orders`);
@@ -159,6 +160,9 @@ const TotalOrder: React.FC<TotalOrderProps> = ({ restaurantId }) => {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRestaurantId, currentRestaurantIdAlt]);
+
+  // 🔄 Sales update by themselves
+  useLiveRefresh(['orders', 'bills'], fetchOrders);
 
   // Escape closes the receipt popup
   useEffect(() => {

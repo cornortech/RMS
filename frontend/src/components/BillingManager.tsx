@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from 'react-dom';
 import {
   FileText,
@@ -428,7 +429,7 @@ export default function BillingManager({
   const [viewingBill, setViewingBill] = useState<RawBill | null>(null);
 
   const fetchBills = async () => {
-    setBillsLoading(true);
+    if (!quietReload()) setBillsLoading(true);
     setBillsError('');
 
     const currentRESTAURANTId = getLoggedInRESTAURANTId();
@@ -464,6 +465,9 @@ export default function BillingManager({
   useEffect(() => {
     fetchBills();
   }, []);
+
+  // 🔄 New / cancelled bills show by themselves
+  useLiveRefresh(['bills'], fetchBills);
 
   const filteredInvoices = useMemo(() => {
     if (!searchQuery.trim()) return bills;

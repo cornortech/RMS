@@ -488,6 +488,7 @@ app.use("/api/rider-app", require("./routes/riderApp"));
 app.use("/api/public", require("./routes/publicMenu"));
 app.use("/api", requireAuth);
 app.use("/api", require("./utils/idempotency"));
+app.use("/api", require("./utils/liveSync")); // 🔄 tell open screens what changed (no F5 needed)
 
 // 📋 Activity log: the app says "open / still open / closed" here, the Super Admin reads the log
 app.use("/api/activity", activity.sessionRouter);

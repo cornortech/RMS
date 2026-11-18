@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import {
   ChefHat, Loader2, RefreshCw, Search, AlertTriangle, CheckCircle2, Save, Undo2, TrendingUp,
   Wallet, Percent, ListChecks, Info, Download, Settings2, Sparkles, Layers,
@@ -183,7 +184,7 @@ export default function FoodCost() {
   }, []);
 
   const loadProfit = useCallback(async () => {
-    setProfitLoading(true);
+    if (!quietReload()) setProfitLoading(true);
     try {
       const { from, to } = rangeFor(period, cFrom, cTo);
       if (from > to) throw new Error('"From" date must be before "To" date.');
@@ -208,6 +209,12 @@ export default function FoodCost() {
   useEffect(() => {
     loadProfit();
   }, [loadProfit]);
+
+  // 🔄 Costs and profit update by themselves (your unsaved boxes are kept)
+  useLiveRefresh(['food-cost', 'menu', 'menu-offers', 'bills', 'delivery'], () => {
+    loadItems();
+    loadProfit();
+  });
 
   // Warn before leaving with unsaved costs
   const dirtyIds = useMemo(

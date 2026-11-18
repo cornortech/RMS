@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useLiveRefresh, quietReload } from '../utils/liveSync'; // 🔄 live updates (no F5)
 import { createPortal } from "react-dom";
 import { useLang } from '../i18n';
 
@@ -297,7 +298,7 @@ const Tables: React.FC = () => {
       setError("No restaurant session found. Please log in again.");
       return;
     }
-    setLoading(true);
+    if (!quietReload()) setLoading(true);
     setError("");
     try {
       const res = await fetch(`${getApiBase()}?restaurantId=${encodeURIComponent(restaurantId)}`);
@@ -314,6 +315,9 @@ const Tables: React.FC = () => {
   useEffect(() => {
     fetchTables();
   }, [fetchTables]);
+
+  // 🔄 Table status (free / busy) updates by itself
+  useLiveRefresh(['tables', 'orders', 'bills'], fetchTables);
 
   const resetForm = useCallback(() => {
     setForm(initialForm);
