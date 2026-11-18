@@ -902,7 +902,7 @@ function StaffLoginGate({
 // 🧭 Smooth sidebar: the panel slides open with a soft ease, then the names fade in.
 const SIDEBAR_SMOOTH_CSS = `
 #app-sidebar .sb-panel {
-  transition: width 380ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 380ms ease;
+  transition: width 450ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 380ms ease;
   will-change: width;
 }
 #app-sidebar .sb-panel :is(p, span) { white-space: nowrap; }
