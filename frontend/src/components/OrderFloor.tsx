@@ -126,6 +126,8 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
 
   const [search, setSearch] = useState('');
   const [seats, setSeats] = useState<'all' | '2' | '4' | '6'>('all');
+  const [pickView, setPickView] = useState<'all' | 'tables' | 'customers'>('all'); // 🪑 tables / 👤 saved customers
+  const [showAllCust, setShowAllCust] = useState(false);
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -247,6 +249,13 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
     if (!k) return customers.slice(0, 6);
     return customers.filter((c) => key(c.name).includes(k) || c.phone.includes(custName.trim())).slice(0, 6);
   }, [customers, custName]);
+
+  // 👤 Saved customers as cards (like tables). A customer with an open order is "busy" → shown on the left.
+  const busyNames = useMemo(() => new Set(takeaway.map((o) => key(o.customerName))), [takeaway]);
+  const freeCustomers = useMemo(() => customers.filter((c) => !busyNames.has(key(c.name))), [customers, busyNames]);
+  const shownCustomers = freeCustomers.filter((c) => !q || key(c.name).includes(q) || c.phone.includes(search.trim()));
+  const CUST_LIMIT = 12;
+  const visibleCustomers = showAllCust ? shownCustomers : shownCustomers.slice(0, CUST_LIMIT);
 
   // ---------------- actions ----------------
   const open = (s: OrderStart) => {
@@ -532,72 +541,163 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
             </div>
           </div>
 
-          {/* ---- FREE TABLES (big cards) ---- */}
+          {/* ---- PICK A FREE TABLE OR A CUSTOMER (big cards) ---- */}
           <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-5 shadow-sm backdrop-blur">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-extrabold text-slate-900">
-                  <Sparkles className="h-4 w-4 text-purple-500" /> Pick a free table
+                  <Sparkles className="h-4 w-4 text-purple-500" /> Pick a free table or a customer
                 </h2>
-                <p className="text-xs text-slate-500">Tap a table to start a new order for it.</p>
+                <p className="text-xs text-slate-500">Tap a table or a saved customer to start a new order.</p>
               </div>
-              <div className="flex items-center gap-2">
-                {(['all', '2', '4', '6'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSeats(s)}
-                    className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-bold transition ${seats === s ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    {s === 'all' ? 'All' : `${s}+ seats`}
-                  </button>
-                ))}
-                <button type="button" onClick={load} title="Refresh" className="cursor-pointer rounded-full border border-purple-100 bg-white p-2 text-purple-600 transition hover:bg-purple-600 hover:text-white">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Tables / Customers switch */}
+                <div className="flex rounded-full bg-slate-100 p-1" role="tablist" aria-label="Show">
+                  {([
+                    { v: 'all', l: 'All', n: shownFree.length + shownCustomers.length },
+                    { v: 'tables', l: 'Tables', n: shownFree.length },
+                    { v: 'customers', l: 'Customers', n: shownCustomers.length },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.v}
+                      type="button"
+                      role="tab"
+                      aria-selected={pickView === t.v}
+                      onClick={() => setPickView(t.v)}
+                      className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${pickView === t.v ? 'bg-white text-purple-700 shadow' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                      {t.l}
+                      <span className={`rounded-full px-1.5 font-mono text-[10px] ${pickView === t.v ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-500'}`}>{t.n}</span>
+                    </button>
+                  ))}
+                </div>
+                {pickView !== 'customers' &&
+                  (['all', '2', '4', '6'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSeats(s)}
+                      className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-bold transition ${seats === s ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {s === 'all' ? 'Any seats' : `${s}+`}
+                    </button>
+                  ))}
+                <button type="button" onClick={() => { load(); loadCustomers(); }} title="Refresh" className="cursor-pointer rounded-full border border-purple-100 bg-white p-2 text-purple-600 transition hover:bg-purple-600 hover:text-white">
                   <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
 
-            {loading && !tables.length ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100" />)}
-              </div>
-            ) : shownFree.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-12 text-center">
-                <Armchair className="h-8 w-8 text-slate-300" />
-                <p className="text-sm font-bold text-slate-700">{tables.length ? 'No free table matches' : 'No tables added yet'}</p>
-                <p className="text-xs text-slate-400">{tables.length ? 'Busy tables are on the left. You can still take a customer / takeaway order.' : 'Add tables in the Tables page, or take a customer order above.'}</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {shownFree.map((t, i) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => openTable(t)}
-                    style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}
-                    className="of-card group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-white to-emerald-50/60 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-purple-300 hover:shadow-xl hover:shadow-purple-500/10 focus:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20"
-                  >
-                    <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> FREE
-                    </span>
-                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100 transition group-hover:bg-purple-600 group-hover:text-white group-hover:ring-purple-600">
-                      <Armchair className="h-5 w-5" />
-                    </span>
-                    <span className="mt-4 block">
-                      <span className="block truncate text-lg font-extrabold text-slate-900">{t.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                        <Users className="h-3.5 w-3.5" /> {t.capacity || '—'} seats
-                      </span>
-                    </span>
-                    <span className="mt-3 flex items-center gap-1 text-xs font-bold text-purple-600 opacity-0 transition group-hover:opacity-100">
-                      Start order <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
-                    </span>
-                  </button>
-                ))}
+            {/* ===== TABLES ===== */}
+            {pickView !== 'customers' && (
+              <>
+                {pickView === 'all' && (
+                  <p className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
+                    <Armchair className="h-3.5 w-3.5" /> Free tables · {shownFree.length}
+                  </p>
+                )}
+                {loading && !tables.length ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100" />)}
+                  </div>
+                ) : shownFree.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+                    <Armchair className="h-8 w-8 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-700">{tables.length ? 'No free table matches' : 'No tables added yet'}</p>
+                    <p className="text-xs text-slate-400">{tables.length ? 'Busy tables are on the left. You can still pick a customer.' : 'Add tables in the Tables page, or pick a customer.'}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {shownFree.map((t, i) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => openTable(t)}
+                        style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}
+                        className="of-card group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-white to-emerald-50/60 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-purple-300 hover:shadow-xl hover:shadow-purple-500/10 focus:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20"
+                      >
+                        <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> FREE
+                        </span>
+                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100 transition group-hover:bg-purple-600 group-hover:text-white group-hover:ring-purple-600">
+                          <Armchair className="h-5 w-5" />
+                        </span>
+                        <span className="mt-4 block">
+                          <span className="block truncate text-lg font-extrabold text-slate-900">{t.name}</span>
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                            <Users className="h-3.5 w-3.5" /> {t.capacity || '—'} seats
+                          </span>
+                        </span>
+                        <span className="mt-3 flex items-center gap-1 text-xs font-bold text-purple-600 opacity-0 transition group-hover:opacity-100">
+                          Start order <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ===== SAVED CUSTOMERS (same cards, by name) ===== */}
+            {pickView !== 'tables' && (
+              <div className={pickView === 'all' ? 'mt-6 border-t border-slate-100 pt-5' : ''}>
+                {pickView === 'all' && (
+                  <p className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
+                    <UserRound className="h-3.5 w-3.5" /> Saved customers · {shownCustomers.length}
+                  </p>
+                )}
+                {shownCustomers.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+                    <UserRound className="h-8 w-8 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-700">{customers.length ? 'No customer matches' : 'No saved customers yet'}</p>
+                    <p className="text-xs text-slate-400">Type a new name in "Customer / Takeaway" above — it is saved after the order.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                      {visibleCustomers.map((c, i) => (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => startCustomer(c)}
+                          title={`Start an order for ${c.name}`}
+                          style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}
+                          className="of-card group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border border-fuchsia-200/70 bg-gradient-to-br from-white to-fuchsia-50/60 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-purple-300 hover:shadow-xl hover:shadow-purple-500/10 focus:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20"
+                        >
+                          <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-extrabold text-fuchsia-700">
+                            <ShoppingBag className="h-3 w-3" /> TAKEAWAY
+                          </span>
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-600 text-base font-extrabold text-white shadow-md shadow-purple-500/20 transition group-hover:scale-105">
+                            {c.name.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="mt-4 block min-w-0">
+                            <span className="block truncate text-lg font-extrabold text-slate-900">{c.name}</span>
+                            <span className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500">
+                              <Phone className="h-3.5 w-3.5 shrink-0" /> {c.phone || 'No phone'}
+                            </span>
+                          </span>
+                          <span className="mt-3 flex items-center gap-1 text-xs font-bold text-purple-600 opacity-0 transition group-hover:opacity-100">
+                            Start order <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {shownCustomers.length > CUST_LIMIT && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllCust((v) => !v)}
+                        className="mx-auto mt-4 flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-purple-50 hover:text-purple-700"
+                      >
+                        {showAllCust ? 'Show less' : `Show all ${shownCustomers.length} customers`}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
+
+
         </main>
       </div>
 
