@@ -16,6 +16,8 @@ const restaurantFeaturesSchema = new mongoose.Schema(
     hiddenPages: { type: [String], default: [] },
     // 🎨 COLOR THEME: this restaurant's main color, e.g. "#2563eb". "" = normal purple.
     themeColor: { type: String, default: "" },
+    // 🎨 PAGE BACKGROUND color, e.g. "#fdf6e9". "" = normal white.
+    themeBg: { type: String, default: "" },
   },
   { timestamps: true }
 );

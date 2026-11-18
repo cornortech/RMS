@@ -5,7 +5,7 @@ import {
   FilePlus, Clock, TrendingUp, ShieldCheck, Users, Fingerprint, Palette, Check,
 } from 'lucide-react';
 import { setHiddenPagesLocal } from '../utils/hiddenPages'; // 🧭 sidebar menu
-import { THEME_PRESETS, isHex, applyTheme, setThemeLocal, currentSavedTheme, whiteTextContrast } from '../utils/theme'; // 🎨 color theme
+import { THEME_PRESETS, BG_PRESETS, isHex, applyTheme, setThemeLocal, whiteTextContrast, lightness, type Theme } from '../utils/theme'; // 🎨 color theme
 import { popupPermission, askPopupPermission, showPopup } from '../utils/alerts';
 
 // =====================================================================
@@ -455,43 +455,114 @@ function SidebarMenuSettings() {
   );
 }
 
-
 // =====================================================================
-// 🎨 COLOR THEME — this restaurant's main color (buttons, links, highlights…)
+// 🎨 COLOR THEME — this restaurant's main color + page background
 //   Pick a color → the whole app shows it at once (preview). Save → kept for this
 //   restaurant on every device. Other restaurants keep their own colors.
 // =====================================================================
+function Swatches({
+  items,
+  value,
+  onPick,
+  fallback,
+  defaultLabel,
+}: {
+  items: { name: string; color: string }[];
+  value: string;
+  onPick: (c: string) => void;
+  fallback: string;
+  defaultLabel: string;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-7">
+      {items.map((p) => {
+        const on = value === p.color;
+        const sw = p.color || fallback;
+        return (
+          <button
+            key={p.name}
+            type="button"
+            onClick={() => onPick(p.color)}
+            aria-pressed={on}
+            className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all ${
+              on ? 'border-slate-900 bg-slate-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-slate-200" style={{ background: sw }}>
+              {on && <Check className={`h-4 w-4 drop-shadow ${lightness(sw) > 0.75 ? 'text-slate-800' : 'text-white'}`} />}
+            </span>
+            <span className="w-full truncate text-center text-[11px] font-bold text-slate-700">{p.name}</span>
+            {!p.color && <span className="-mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">{defaultLabel}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function OwnColor({ value, onPick, fallback, placeholder }: { value: string; onPick: (c: string) => void; fallback: string; placeholder: string }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-300 p-3">
+      <span className="text-xs font-bold text-slate-600">Your own color</span>
+      <input
+        type="color"
+        aria-label="Pick your own color"
+        value={isHex(value) ? value : fallback}
+        onChange={(e) => onPick(e.target.value.toLowerCase())}
+        className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-0.5"
+      />
+      <input
+        value={text}
+        onChange={(e) => {
+          const v = e.target.value.trim();
+          setText(v);
+          if (isHex(v)) onPick(v.toLowerCase());
+        }}
+        placeholder={placeholder}
+        maxLength={7}
+        aria-label="Color code"
+        className="w-28 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm uppercase outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+      />
+    </div>
+  );
+}
+
 function ColorThemeSettings() {
-  const [saved, setSaved] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [hexInput, setHexInput] = useState('');
+  const [saved, setSaved] = useState<Theme | null>(null);
+  const [draft, setDraft] = useState<Theme>({ color: '', bg: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const savedRef = React.useRef('');
+  const savedRef = React.useRef<Theme>({ color: '', bg: '' });
 
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(FEATURES_URL);
         const json = await res.json();
-        const c = isHex(json?.data?.themeColor) ? json.data.themeColor : '';
-        setSaved(c);
-        savedRef.current = c;
-        setDraft(c);
-        setHexInput(c);
+        const t = {
+          color: isHex(json?.data?.themeColor) ? json.data.themeColor : '',
+          bg: isHex(json?.data?.themeBg) ? json.data.themeBg : '',
+        };
+        setSaved(t);
+        savedRef.current = t;
+        setDraft(t);
       } catch {
-        setSaved('');
+        setSaved({ color: '', bg: '' });
       }
     })();
-    // Leaving Settings without saving → go back to the saved color
-    return () => applyTheme(currentSavedTheme() || savedRef.current);
+    // Leaving Settings without saving → go back to the saved colors
+    return () => applyTheme(savedRef.current);
   }, []);
 
-  const preview = (c: string) => {
-    setDraft(c);
-    setHexInput(c);
+  const preview = (patch: Partial<Theme>) => {
+    setDraft((d) => {
+      const next = { ...d, ...patch };
+      applyTheme(next); // whole app changes at once so you can see it
+      return next;
+    });
     setMsg(null);
-    applyTheme(c); // whole app changes at once so you can see it
   };
 
   const save = async () => {
@@ -502,14 +573,14 @@ function ColorThemeSettings() {
       const res = await fetch(FEATURES_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themeColor: draft }),
+        body: JSON.stringify({ themeColor: draft.color, themeBg: draft.bg }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) throw new Error(json.message || 'Could not save.');
-      const c = json.data?.themeColor || '';
-      setSaved(c);
-      savedRef.current = c;
-      setThemeLocal(c); // remember for this restaurant on this device
+      const t = { color: json.data?.themeColor || '', bg: json.data?.themeBg || '' };
+      setSaved(t);
+      savedRef.current = t;
+      setThemeLocal(t); // remember for this restaurant on this device
       setMsg({ ok: true, text: 'Theme saved. All devices of your restaurant use it now.' });
     } catch (e: any) {
       setMsg({ ok: false, text: e.message || 'Could not save.' });
@@ -518,9 +589,7 @@ function ColorThemeSettings() {
     }
   };
 
-  const cancel = () => preview(saved || '');
-
-  if (saved === null) {
+  if (!saved) {
     return (
       <div className="flex justify-center py-8 text-purple-500">
         <Loader2 className="h-5 w-5 animate-spin" />
@@ -528,9 +597,9 @@ function ColorThemeSettings() {
     );
   }
 
-  const changed = draft !== saved;
-  const lowContrast = isHex(draft) && whiteTextContrast(draft) < 3;
-  const presetMatch = THEME_PRESETS.find((p) => p.color === draft);
+  const changed = draft.color !== saved.color || draft.bg !== saved.bg;
+  const lowContrast = isHex(draft.color) && whiteTextContrast(draft.color) < 3;
+  const darkBg = isHex(draft.bg) && lightness(draft.bg) < 0.8;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" id="color-theme-settings">
@@ -541,80 +610,45 @@ function ColorThemeSettings() {
         <div>
           <p className="text-sm font-bold text-slate-900">Color theme</p>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-            Choose your restaurant's main color. Buttons, links, highlights and the sidebar change to it. Tap a color to see it on the whole app, then press Save. Only your restaurant changes.
+            Choose your restaurant's colors. Tap a color to see it on the whole app, then press Save. Only your restaurant changes.
           </p>
         </div>
       </div>
 
-      {/* Ready-made colors */}
-      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        {THEME_PRESETS.map((p) => {
-          const on = draft === p.color;
-          const swatch = p.color || '#9810fa';
-          return (
-            <button
-              key={p.name}
-              type="button"
-              onClick={() => preview(p.color)}
-              aria-pressed={on}
-              className={`group flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all ${
-                on ? 'border-slate-900 bg-slate-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <span className="relative flex h-9 w-9 items-center justify-center rounded-full shadow-inner ring-2 ring-white" style={{ background: `linear-gradient(135deg, ${swatch}, ${swatch}cc)` }}>
-                {on && <Check className="h-4 w-4 text-white drop-shadow" />}
-              </span>
-              <span className="w-full truncate text-center text-[11px] font-bold text-slate-700">{p.name}</span>
-              {!p.color && <span className="-mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Default</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Own color */}
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-300 p-3">
-        <span className="text-xs font-bold text-slate-600">Your own color</span>
-        <input
-          type="color"
-          aria-label="Pick your own color"
-          value={isHex(draft) ? draft : '#9810fa'}
-          onChange={(e) => preview(e.target.value.toLowerCase())}
-          className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-0.5"
-        />
-        <input
-          value={hexInput}
-          onChange={(e) => {
-            const v = e.target.value.trim();
-            setHexInput(v);
-            if (isHex(v)) preview(v.toLowerCase());
-          }}
-          placeholder="#2563eb"
-          maxLength={7}
-          aria-label="Color code"
-          className="w-28 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm uppercase outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
-        />
-        <span className="text-[11px] text-slate-400">{presetMatch ? presetMatch.name : isHex(draft) ? 'Custom color' : 'Royal Purple (default)'}</span>
-      </div>
-
+      {/* 1. Main color */}
+      <p className="mb-2 mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">1 · Main color — buttons, links, highlights</p>
+      <Swatches items={THEME_PRESETS} value={draft.color} onPick={(c) => preview({ color: c })} fallback="#9810fa" defaultLabel="Default" />
+      <OwnColor value={draft.color} onPick={(c) => preview({ color: c })} fallback="#9810fa" placeholder="#2563eb" />
       {lowContrast && (
-        <p className="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+        <p className="mt-2 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
           <AlertCircle className="h-4 w-4 shrink-0" /> This color is light — white text on buttons may be hard to read. A darker shade is better.
         </p>
       )}
 
-      {/* Preview (uses the real app colors, so it shows exactly what staff will see) */}
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+      {/* 2. Background */}
+      <p className="mb-2 mt-6 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">2 · Background — page, sidebar and top bar</p>
+      <Swatches items={BG_PRESETS} value={draft.bg} onPick={(c) => preview({ bg: c })} fallback="#ffffff" defaultLabel="Default" />
+      <OwnColor value={draft.bg} onPick={(c) => preview({ bg: c })} fallback="#ffffff" placeholder="#fdf6e9" />
+      {darkBg && (
+        <p className="mt-2 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+          <AlertCircle className="h-4 w-4 shrink-0" /> This background is dark — text may be hard to read. Light colors work best.
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-slate-400">Cards and boxes stay white so text is always easy to read.</p>
+
+      {/* Preview */}
+      <div className="mt-5 rounded-2xl border border-slate-200 p-4" style={{ background: 'var(--app-bg, #fbfaff)' }}>
         <p className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">Preview</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-100">
+          <div className="space-y-2 rounded-xl p-3 ring-1 ring-slate-100" style={{ background: 'var(--app-surface, #ffffff)' }}>
             <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 px-3 py-2.5 text-[13px] font-semibold text-white shadow-lg shadow-purple-500/25">
               <ShoppingBag className="h-[18px] w-[18px]" /> Create Order
             </div>
-            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-slate-600 hover:bg-purple-50/80">
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-slate-600">
               <ClipboardList className="h-[18px] w-[18px] text-slate-400" /> Orders
             </div>
           </div>
-          <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-slate-100">
+          <div className="space-y-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-bold text-white">Save</span>
               <span className="rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-700">Cancel</span>
@@ -631,8 +665,13 @@ function ColorThemeSettings() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        {(saved.color || saved.bg || draft.color || draft.bg) && (
+          <button type="button" onClick={() => preview({ color: '', bg: '' })} className="mr-auto cursor-pointer rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100">
+            Back to default
+          </button>
+        )}
         {changed && (
-          <button type="button" onClick={cancel} className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">
+          <button type="button" onClick={() => preview(saved)} className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">
             Cancel
           </button>
         )}

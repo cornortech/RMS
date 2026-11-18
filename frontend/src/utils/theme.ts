@@ -7,9 +7,10 @@
 //   We replace those variables with shades made from the restaurant's color,
 //   so EVERY button, link, highlight and badge changes at once — no page code changes.
 //
+// The page background can be changed too (--app-bg). Cards stay white so text is easy to read.
 // Saved on the server per restaurant (Settings → Features → Color theme),
 // and on this device per restaurant (so it shows at once after login).
-// "" = the normal purple theme.
+// "" = the normal purple theme / white background.
 // =====================================================================
 import { useCallback, useEffect } from 'react';
 import { useLiveRefresh } from './liveSync';
@@ -17,7 +18,7 @@ import { useLiveRefresh } from './liveSync';
 const API_BASE = (import.meta.env.VITE_API_URL || 'https://rms-elhj.onrender.com').trim().replace(/\/+$/, '');
 const KEY = 'rmsTheme';
 export const THEME_EVENT = 'rms:theme';
-export const DEFAULT_THEME = '';
+
 
 export const THEME_PRESETS: { name: string; color: string }[] = [
   { name: 'Royal Purple', color: '' },
@@ -97,42 +98,71 @@ export function buildPalette(hex: string): Record<string, string> {
   return vars;
 }
 
+export const BG_PRESETS: { name: string; color: string }[] = [
+  { name: 'White', color: '' },
+  { name: 'Snow Gray', color: '#f1f5f9' },
+  { name: 'Warm Cream', color: '#fdf6e9' },
+  { name: 'Soft Sand', color: '#f5efe6' },
+  { name: 'Mint', color: '#ecfdf5' },
+  { name: 'Sky Mist', color: '#eff6ff' },
+  { name: 'Blush', color: '#fff1f2' },
+  { name: 'Lavender', color: '#f5f3ff' },
+  { name: 'Lemon', color: '#fefce8' },
+];
+
+/** 0 = black … 1 = white. Below ~0.75 the dark text becomes hard to read. */
+export function lightness(hex: string) {
+  return hexToOklch(hex).L;
+}
+
+export interface Theme {
+  color: string; // main color ("" = purple)
+  bg: string; // page background ("" = white)
+}
+export const DEFAULT: Theme = { color: '', bg: '' };
+
 let appliedVars: string[] = [];
 
-/** Paint the whole app with this color ("" = normal purple). */
-export function applyTheme(color: string) {
+/** Paint the whole app ("" = normal purple / white). */
+export function applyTheme(t: Theme) {
   const root = document.documentElement;
   appliedVars.forEach((v) => root.style.removeProperty(v));
   appliedVars = [];
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (!isHex(color)) {
-    if (meta) meta.setAttribute('content', '#7c3aed');
-    return;
+  const vars: Record<string, string> = isHex(t.color) ? buildPalette(t.color) : {};
+  if (isHex(t.bg)) {
+    vars['--app-bg'] = t.bg; // page background
+    vars['--app-surface'] = `color-mix(in srgb, ${t.bg} 55%, white)`; // sidebar + top bar (a bit lighter)
   }
-  const vars = buildPalette(color);
   Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
   appliedVars = Object.keys(vars);
-  if (meta) meta.setAttribute('content', color);
+  document.body.style.backgroundColor = isHex(t.bg) ? t.bg : '';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isHex(t.color) ? t.color : '#7c3aed');
 }
 
 /* ---------------- saved per restaurant ---------------- */
 let currentOwner = '';
 
-const readLocal = (owner: string) => {
-  if (!owner) return DEFAULT_THEME;
+const clean = (t: Partial<Theme> | null | undefined): Theme => ({
+  color: isHex(t?.color) ? t!.color!.toLowerCase() : '',
+  bg: isHex(t?.bg) ? t!.bg!.toLowerCase() : '',
+});
+
+const readLocal = (owner: string): Theme => {
+  if (!owner) return DEFAULT;
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return saved && saved.owner === owner && isHex(saved.color) ? saved.color : DEFAULT_THEME;
+    return saved && saved.owner === owner ? clean(saved) : DEFAULT;
   } catch {
-    return DEFAULT_THEME;
+    return DEFAULT;
   }
 };
 
 /** After saving in Settings: remember on this device + repaint now. */
-export function setThemeLocal(color: string) {
-  const c = isHex(color) ? color : DEFAULT_THEME;
+export function setThemeLocal(t: Partial<Theme>) {
+  const c = clean(t);
   try {
-    if (currentOwner) localStorage.setItem(KEY, JSON.stringify({ owner: currentOwner, color: c }));
+    if (currentOwner) localStorage.setItem(KEY, JSON.stringify({ owner: currentOwner, ...c }));
   } catch {
     /* ignore */
   }
@@ -140,10 +170,10 @@ export function setThemeLocal(color: string) {
   window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: c }));
 }
 
-/** The saved theme of the restaurant that is logged in on this tab ('' before login). */
+/** The saved theme of the restaurant that is logged in on this tab. */
 export const currentSavedTheme = () => readLocal(currentOwner);
 
-/** Loads and applies the logged-in restaurant's theme. Logged out → normal purple. */
+/** Loads and applies the logged-in restaurant's theme. Logged out → normal purple + white. */
 export function useRestaurantTheme(restaurantKey: string) {
   const owner = String(restaurantKey || '').trim().toLowerCase();
 
@@ -152,7 +182,9 @@ export function useRestaurantTheme(restaurantKey: string) {
     try {
       const res = await fetch(`${API_BASE}/api/features`);
       const json = await res.json().catch(() => ({}));
-      if (res.ok && json.success && currentOwner === owner) setThemeLocal(json.data?.themeColor || '');
+      if (res.ok && json.success && currentOwner === owner) {
+        setThemeLocal({ color: json.data?.themeColor || '', bg: json.data?.themeBg || '' });
+      }
     } catch {
       /* offline → keep this device's copy for this restaurant */
     }

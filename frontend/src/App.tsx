@@ -429,7 +429,7 @@ function Sidebar({
     .filter((g) => g.items.length > 0);
 
   return (
-    <div className="h-full flex flex-col bg-white/85 backdrop-blur-xl border-r border-purple-100/80">
+    <div className="h-full flex flex-col bg-[var(--app-surface,rgba(255,255,255,0.85))] backdrop-blur-xl border-r border-purple-100/80">
       {/* Brand */}
       <div className={`relative flex items-center ${compact ? 'justify-center px-2' : 'justify-between px-5'} pt-6 pb-5`}>
         <div className="flex items-center gap-3 min-w-0">
@@ -1344,7 +1344,7 @@ const { lang, setLang } = useLang();
   };
 
   return (
-    <div className="relative min-h-screen bg-[#fbfaff] flex font-sans text-slate-800 antialiased" id="app-root">
+    <div className="relative min-h-screen bg-[var(--app-bg,#fbfaff)] flex font-sans text-slate-800 antialiased" id="app-root">
       <GlobalStyles />
       <AmbientBackdrop intensity="soft" />
 
@@ -1379,7 +1379,7 @@ const { lang, setLang } = useLang();
       >
         <style>{SIDEBAR_SMOOTH_CSS}</style>
         <div
-          className={`sb-panel absolute inset-y-0 left-0 overflow-hidden bg-white ${sidebarCollapsed ? 'w-[84px]' : 'sb-open w-72'} ${
+          className={`sb-panel absolute inset-y-0 left-0 overflow-hidden bg-[var(--app-surface,#fff)] ${sidebarCollapsed ? 'w-[84px]' : 'sb-open w-72'} ${
             !sidebarPinned && !sidebarCollapsed ? 'shadow-[12px_0_40px_-12px_rgba(76,29,149,0.28)]' : 'shadow-none'
           }`}
         >
@@ -1391,7 +1391,7 @@ const { lang, setLang } = useLang();
       <div className="relative z-10 flex-1 flex flex-col min-w-0" id="app-viewport">
         {/* HEADER */}
         <header
-          className="h-[72px] sticky top-0 z-20 flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 bg-white/75 backdrop-blur-xl border-b border-purple-100/70"
+          className="h-[72px] sticky top-0 z-20 flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 bg-[var(--app-surface,rgba(255,255,255,0.75))] backdrop-blur-xl border-b border-purple-100/70"
           id="app-header"
         >
           <div className="flex items-center gap-3 min-w-0">
