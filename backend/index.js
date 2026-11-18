@@ -28,6 +28,7 @@ const { nextBillNumber, nextCreditNoteNumber } = require("./utils/billNumber");
 const { toBS } = require("./utils/nepaliDate");
 const { deleteImage } = require("./utils/cloudinary");
 const RestaurantFeatures = require("./models/restaurantFeatures");
+const KI = require("./utils/kitchenItems"); // 🍳 item-level kitchen status
 const activity = require("./routes/activity"); // 📋 Activity & session log + auto-deactivate
 
 // 🥤 "No beverage in KOT" feature. Returns a function that says if an item is a beverage,
@@ -596,7 +597,7 @@ const guard = (path, rules) =>
 const M = "Manager", W = "Waiter", K = "Kitchen Staff", C = "Cashier";
 
 guard("/api/menu",   { POST: [M], PUT: [M], DELETE: [M] });
-guard("/api/orders", { POST: [M, W], PUT: [M, W, K, C], DELETE: [M] });
+guard("/api/orders", { POST: [M, W], PUT: [M, W, K, C], PATCH: [M, W, K, C], DELETE: [M] });
 guard("/api/bills",  { POST: [M, C], PATCH: [M, C] });
 guard("/api/tables", { POST: [M, C], PUT: [M, W, C], DELETE: [M] });
 guard("/api/stocks", { POST: [M, K, C], PUT: [M, K, C], DELETE: [M] });
@@ -890,14 +891,11 @@ app.post("/api/orders", requireAuth, async (req, res) => {
         }
 
         // 🥤 Only drinks + feature ON → no kitchen ticket: goes straight to Create Bill
-        const orderItems = (formData.items || []).map(i => ({
-            itemName: i.itemName || "Unknown Item",
-            description: i.description || "",
-            itemPrice: Number(i.itemPrice) || 0,
-            quantity: Number(i.quantity) || 1,
-        }));
         const isBeverage = await beverageChecker(restaurantId);
+        // 🍳 each item keeps its own kitchen progress (drinks that skip the kitchen are ready at once)
+        const orderItems = (formData.items || []).map((i) => KI.newLine(i, isBeverage));
         const onlyDrinks = !!isBeverage && orderItems.length > 0 && orderItems.every((i) => isBeverage(i.itemName));
+        if (onlyDrinks) orderItems.forEach((l) => { l.readyQty = l.quantity; l.servedQty = l.quantity; });
 
         const newOrder = await Order.create({
             restaurantId: restaurantId,
@@ -997,6 +995,51 @@ app.get("/api/staff/names", requireAuth, async (req, res) => {
     }
 });
 
+// 🍳 KITCHEN / WAITER: change the status of single items of an order (not the whole order)
+//    body: { action: "start" | "ready" | "ready1" | "serve" | "undo", lines: [{ index, itemName }] }
+app.patch("/api/orders/:id/items", requireAuth, async (req, res) => {
+    try {
+        const action = String(req.body?.action || "");
+        const want = Array.isArray(req.body?.lines) ? req.body.lines.slice(0, 100) : [];
+        if (!["start", "ready", "ready1", "serve", "undo"].includes(action) || !want.length) {
+            return res.status(400).json({ success: false, message: "Nothing to change." });
+        }
+        const order = await Order.findOne({ _id: req.params.id, restaurantId: req.auth.restaurantId });
+        if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+        if (["Completed", "Cancelled"].includes(order.orderStatus)) {
+            return res.status(409).json({ success: false, message: "This order is already finished." });
+        }
+
+        const now = new Date();
+        const lines = order.items.map((i) => KI.normalizeLine(i.toObject ? i.toObject() : i, order.orderStatus));
+        for (const w of want) {
+            const idx = Number(w?.index);
+            const line = Number.isInteger(idx) ? lines[idx] : null;
+            // The order was edited meanwhile (line moved / removed) → don't touch the wrong item
+            if (!line || KI.nameKey(line.itemName) !== KI.nameKey(w?.itemName)) {
+                return res.status(409).json({ success: false, message: "This order was just changed. Please try again." });
+            }
+            lines[idx] = KI.applyLineAction(line, action, now);
+        }
+
+        const before = order.orderStatus;
+        order.items = lines;
+        order.orderStatus = KI.deriveStatus(lines);
+        await order.save();
+
+        // 🛵 online order: move the delivery order forward too
+        if (order.orderStatus !== before) {
+            require("./utils/kitchenSync")
+                .syncFromKitchen(order)
+                .catch((e) => console.error("⚠️ kitchen → delivery sync failed:", e.message));
+        }
+        return res.status(200).json({ success: true, data: order });
+    } catch (error) {
+        console.error("🔴 ITEM STATUS:", error);
+        return res.status(500).json({ success: false, message: "Could not update the item." });
+    }
+});
+
 app.put("/api/orders/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
@@ -1014,27 +1057,30 @@ app.put("/api/orders/:id", requireAuth, async (req, res) => {
         if (updateData.paymentStatus !== undefined) updatedFields.paymentStatus = updateData.paymentStatus;
         if (updateData.staffId !== undefined) updatedFields.staffId = updateData.staffId; // <--- Allow updating staffId if needed
 
-        if (updateData.items) {
-            updatedFields.items = updateData.items.map(i => ({
-                itemName: i.itemName || "Unknown Item",
-                description: i.description || "",
-                itemPrice: Number(i.itemPrice) || 0,
-                quantity: Number(i.quantity) || 1,
-            }));
-        }
-
         const query = req.auth.isAdmin ? { _id: id } : { _id: id, restaurantId: req.auth.restaurantId };
 
-        // 🥤 A drinks-only order (sent straight to billing) got FOOD added → send it to the kitchen now
-        if (updatedFields.items) {
-            const existing = await Order.findOne(query).select("autoServed orderStatus restaurantId").lean();
-            if (existing?.autoServed && existing.orderStatus === "Served") {
-                const isBeverage = await beverageChecker(existing.restaurantId);
-                const hasFood = !isBeverage || updatedFields.items.some((i) => !isBeverage(i.itemName));
-                if (hasFood) {
-                    updatedFields.orderStatus = "Pending";
-                    updatedFields.autoServed = false;
+        // 🍳 ITEM-LEVEL KITCHEN STATUS: items edited → each line keeps its progress (added qty waits for the kitchen).
+        //    Whole order set to a status by hand → every line follows. Then the order status comes from its lines.
+        if (Array.isArray(updateData.items) || updateData.orderStatus !== undefined) {
+            const existing = await Order.findOne(query).select("items autoServed orderStatus restaurantId").lean();
+            if (existing) {
+                let lines = (existing.items || []).map((l) => KI.normalizeLine(l, existing.orderStatus));
+                if (Array.isArray(updateData.items)) {
+                    const isBeverage = await beverageChecker(existing.restaurantId);
+                    lines = KI.mergeLines(lines, updateData.items, isBeverage);
+                    // 🥤 A drinks-only order (sent straight to billing) got FOOD added → send it to the kitchen now
+                    if (existing.autoServed && existing.orderStatus === "Served") {
+                        const hasFood = !isBeverage || lines.some((i) => !isBeverage(i.itemName));
+                        if (hasFood) updatedFields.autoServed = false;
+                    }
                 }
+                const sent = updateData.orderStatus;
+                if (sent !== undefined && sent !== existing.orderStatus && !(sent === "Pending" && Array.isArray(updateData.items))) {
+                    lines = KI.applyOrderStatus(lines, sent);
+                }
+                updatedFields.items = lines;
+                const finalStatus = updatedFields.orderStatus ?? existing.orderStatus;
+                if (KI.FLOW.includes(finalStatus) && lines.length) updatedFields.orderStatus = KI.deriveStatus(lines);
             }
         }
 

@@ -18,6 +18,14 @@ const orderItemSchema = mongoose.Schema({
         min: 1,
         default: 1,
     },
+    // 🍳 Item-level kitchen progress (no defaults on purpose: old orders follow the order status)
+    note: { type: String },          // special instruction for this item ("less spicy")
+    readyQty: { type: Number, min: 0 },  // how many the kitchen finished
+    servedQty: { type: Number, min: 0 }, // how many were given to the customer
+    cooking: { type: Boolean },      // kitchen started it
+    noKitchen: { type: Boolean },    // drink that skips the kitchen (ready at once)
+    addedAt: { type: Date },         // when this item was ordered
+    readyAt: { type: Date },         // when it was finished
 }, { _id: false });
 
 const createOrderSchema = mongoose.Schema({

@@ -159,6 +159,7 @@ interface CartLine {
   category: string;
   unitPrice: number;
   quantity: number;
+  note?: string; // 🍳 special instruction for the kitchen ("less spicy")
 }
 
 type SortKey = 'name' | 'priceAsc' | 'priceDesc';
@@ -302,6 +303,7 @@ export default function CreateOrder({ onOrderCreated, start = null, onBack, onDo
         category: 'Other',
         unitPrice: Number(i.itemPrice) || 0,
         quantity: Number(i.quantity) || 1,
+        note: i.note || '',
       }));
       setCart(lines);
       originalRef.current = {
@@ -784,6 +786,7 @@ pickCustomer(customerSuggestions[highlight]);
       description: line.description,
       itemPrice: line.unitPrice,
       quantity: line.quantity,
+      note: (line.note || '').trim(), // 🍳 shown to the kitchen for this item
     }));
 
     try {
@@ -1389,6 +1392,19 @@ pickCustomer(customerSuggestions[highlight]);
                           <p className="font-mono text-[11px] font-semibold text-slate-400">
                             {formatNPR(line.unitPrice)} each
                           </p>
+                          {/* 🍳 note for the kitchen, only for this item */}
+                          <input
+                            value={line.note || ''}
+                            onChange={(e) => {
+                              const v = e.target.value.slice(0, 120);
+                              setCart((prev) => prev.map((l) => (l.menuItemId === line.menuItemId ? { ...l, note: v } : l)));
+                            }}
+                            placeholder="+ Note for kitchen (e.g. less spicy)"
+                            aria-label={`Note for ${line.name}`}
+                            className={`mt-1 w-full rounded-md border px-2 py-1 text-[11px] outline-none transition placeholder:text-slate-300 focus:border-amber-300 focus:bg-amber-50 focus:ring-2 focus:ring-amber-200/60 ${
+                              line.note ? 'border-amber-200 bg-amber-50 font-semibold text-amber-800' : 'border-transparent bg-slate-50 text-slate-600'
+                            }`}
+                          />
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <QtyStepper

@@ -6,6 +6,7 @@ import {
 import CreateOrder, { type OrderStart } from './CreateOrder';
 import CreateBill from './CreateBill';
 import { useLiveRefresh, quietReload } from '../utils/liveSync';
+import { orderProgress } from '../utils/kitchenItems'; // 🍳 item-level progress
 
 // =====================================================================
 // 🍽️ TABLES & ORDERS  (the new "Create Order" page)
@@ -242,7 +243,8 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
     (t) => (!q || key(t.name).includes(q)) && (seats === 'all' || (seats === '6' ? t.capacity >= 6 : t.capacity >= Number(seats)))
   );
   const runningTotal = orders.reduce((s, o) => s + (['Paid'].includes(o.paymentStatus) ? 0 : orderTotal(o)), 0);
-  const readyCount = orders.filter((o) => o.orderStatus === 'Ready').length;
+  // Orders with finished items waiting to be served (item by item, not only whole orders)
+  const readyCount = orders.filter((o) => orderProgress(o as any).toServe > 0).length;
 
   const custMatches = useMemo(() => {
     const k = key(custName);
@@ -728,6 +730,7 @@ function OrderCard({
   const s = st(o.orderStatus);
   const min = minutesSince(o.createdAt, now);
   const paid = o.paymentStatus === 'Paid';
+  const p = orderProgress(o as any); // 🍳 4 of 5 prepared · 2 of 5 served
   return (
     <div className="of-card group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-lg">
       <span className={`absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b ${s.bar}`} />
@@ -755,6 +758,23 @@ function OrderCard({
           </span>
           <span className="font-mono text-sm font-extrabold text-slate-900">{npr(orderTotal(o))}</span>
         </div>
+        {p.total > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+              <span>
+                <b className="text-emerald-600">{p.ready}</b>/{p.total} prepared
+              </span>
+              {p.toServe > 0 && <span className="rounded-full bg-sky-50 px-1.5 font-bold text-sky-700">{p.toServe} ready to serve</span>}
+              <span>
+                <b className="text-sky-600">{p.served}</b>/{p.total} served
+              </span>
+            </div>
+            <div className="relative mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-300 transition-all duration-500" style={{ width: `${(p.ready / p.total) * 100}%` }} />
+              <div className="absolute inset-y-0 left-0 rounded-full bg-sky-500 transition-all duration-500" style={{ width: `${(p.served / p.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
       </button>
       {canBill && !paid && (
         <div className="flex border-t border-slate-100">
