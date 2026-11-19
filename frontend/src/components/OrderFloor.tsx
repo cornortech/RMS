@@ -276,8 +276,13 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
   };
   const startCustomer = (c?: Customer) => {
     const name = (c?.name ?? custName).trim();
-    if (!name) return flash(false, 'Type the customer name first.');
-    open({ customerName: name, customerPhone: c?.phone ?? custPhone.trim(), customerAddress: c?.address || '' });
+    const phone = (c?.phone ?? custPhone).trim();
+    const digits = phone.replace(/\D/g, '').slice(-10);
+    // 👤 A name OR a phone number is enough
+    if (!name && digits.length < 7) return flash(false, 'Type the customer name or phone number.');
+    // Only a phone typed → use the saved customer with that phone (name + address), if there is one
+    const byPhone = !c && !name ? customers.find((x) => x.phone && x.phone.replace(/\D/g, '').slice(-10) === digits) : undefined;
+    open({ customerName: name || byPhone?.name || '', customerPhone: phone, customerAddress: c?.address || byPhone?.address || '' });
     setCustName('');
     setCustPhone('');
     setSuggestOpen(false);
@@ -487,7 +492,7 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
                 </span>
                 <div>
                   <p className="text-sm font-extrabold text-slate-900">Customer / Takeaway</p>
-                  <p className="text-[11px] text-slate-500">No table needed</p>
+                  <p className="text-[11px] text-slate-500">Name or phone — one is enough</p>
                 </div>
               </div>
               <div className="relative flex-1">
@@ -528,7 +533,7 @@ export default function OrderFloor({ lang = 'en' as Lang }: { lang?: Lang }) {
                 value={custPhone}
                 onChange={(e) => setCustPhone(e.target.value.replace(/[^0-9+\-\s]/g, '').slice(0, 20))}
                 onKeyDown={(e) => e.key === 'Enter' && startCustomer()}
-                placeholder="Phone (optional)"
+                placeholder="Phone number"
                 aria-label="Phone"
                 inputMode="tel"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-500/10 md:w-44"

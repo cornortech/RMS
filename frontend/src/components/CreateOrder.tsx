@@ -580,20 +580,24 @@ export default function CreateOrder({ onOrderCreated, start = null, onBack, onDo
   const totalWithDelivery = cartTotal + orderDeliveryCharge;
   const totalItemsCount = cart.reduce((sum, l) => sum + l.quantity, 0);
 
-  // Only ONE of table / name is needed, depending on the chosen mode
+  // Only ONE of table / name is needed, depending on the chosen mode.
+  // 👤 Customer order: a name OR a phone number is enough (address is optional)
+  const hasCustomerPhone = customerPhone.replace(/\D/g, '').length >= 7;
   const missing =
     cart.length === 0
       ? 'Add at least one item from the menu.'
       : orderBy === 'table' && !tableNumber
       ? 'Choose a table, or switch to customer name.'
+      : orderBy === 'name' && !customerName.trim() && !hasCustomerPhone
+      ? 'Type the customer name or phone number.'
       : '';
   const canOpenConfirm = !missing && !isSubmitting;
 
   // What will be saved on the order
   const finalTableNumber = orderBy === 'table' ? selectedTable?.tableName || tableNumber.trim() : NO_TABLE_LABEL;
-  // Customer details are all optional: no name → "Guest"
+  // Name, or the phone number when only the phone was typed
   const finalCustomerName =
-    orderBy === 'name' ? customerName.trim() || 'Guest' : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
+    orderBy === 'name' ? customerName.trim() || customerPhone.trim() || 'Guest' : guestNameForTable(selectedTable?.tableName || tableNumber.trim());
 
   // ⚠️ When a phone number is typed, check if it has cancelled bills (waits 0.4 s after typing stops)
   useEffect(() => {
@@ -1005,7 +1009,7 @@ pickCustomer(customerSuggestions[highlight]);
                   {orderBy === 'table' ? (
                     <span className="text-rose-500">*</span>
                   ) : (
-                    <span className="font-medium text-slate-400">(optional)</span>
+<span className="font-medium text-slate-400">(name or phone<span className="text-rose-500">*</span>)</span>
                   )}
                   {orderBy === 'table' && selectedTable && (
                     <span className="truncate text-[11px] font-semibold text-purple-700">· {selectedTable.tableName}</span>
@@ -1138,7 +1142,7 @@ pickCustomer(customerSuggestions[highlight]);
                           type="text"
                           value={customerAddress}
                           onChange={(e) => setCustomerAddress(e.target.value.slice(0, 200))}
-                          placeholder="Address"
+                          placeholder="Address (optional)"
                           aria-label="Customer address"
                           autoComplete="off"
                           className={`${inputBase} pl-10`}
@@ -1321,7 +1325,7 @@ pickCustomer(customerSuggestions[highlight]);
                     ) : (
                       <p className="flex items-center gap-1 text-[11px] text-slate-400">
                         <Info className="h-3 w-3" />
-                        All optional. Leave empty to order as "Guest".
+                        Type a name or a phone number — one is enough. Address is optional.
                       </p>
                     )}
                   </div>
