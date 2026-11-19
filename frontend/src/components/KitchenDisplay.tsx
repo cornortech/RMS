@@ -116,6 +116,8 @@ interface Entry {
   late: boolean; // added after the order was placed
 }
 
+type ActFn = (targets: Entry[], action: LineAction) => Promise<boolean | void> | void;
+
 // ==========================================
 // HELPERS
 // ==========================================
@@ -646,12 +648,22 @@ function EntryRow({
   e: Entry;
   now: number;
   busy: boolean;
-  act: (targets: Entry[], action: LineAction) => void;
+  act: ActFn;
 }) {
   const mins = minutesSince(e.at, now);
   const note = e.line.note;
   const orderNote = cleanNote(e.order.orderNote);
   const finished = e.st.status === 'ready' || e.st.status === 'served';
+
+  // Serve straight from the drawer: finish first if still cooking, then serve
+  const serveNow = async () => {
+    if (e.st.toCook > 0) {
+      const ok = await act([e], 'ready');
+      if (ok === false) return; // finishing failed, so don't try to serve
+    }
+    await act([e], 'serve');
+  };
+
   return (
     <div
       className={`kds-row rounded-2xl border p-3 transition ${
@@ -692,9 +704,16 @@ function EntryRow({
         )}
         <span className="ml-auto flex items-center gap-1.5">
           {finished ? (
-            <ActBtn small tone="ghost" icon={Undo2} busy={busy} onClick={() => act([e], 'undo')} title="Undo (back to cooking)">
-              Undo
-            </ActBtn>
+            <>
+              <ActBtn small tone="ghost" icon={Undo2} busy={busy} onClick={() => act([e], 'undo')} title="Undo (back to cooking)">
+                Undo
+              </ActBtn>
+              {e.st.toServe > 0 && (
+                <ActBtn small tone="sky" icon={HandPlatter} busy={busy} onClick={serveNow} title="Serve">
+                  Serve
+                </ActBtn>
+              )}
+            </>
           ) : (
             <>
               {e.st.status === 'waiting' && (
@@ -709,6 +728,9 @@ function EntryRow({
               )}
               <ActBtn small tone="emerald" icon={Check} busy={busy} onClick={() => act([e], 'ready')} title="Finished">
                 Finished
+              </ActBtn>
+              <ActBtn small tone="sky" icon={HandPlatter} busy={busy} onClick={serveNow} title="Finish and serve now">
+                Serve
               </ActBtn>
             </>
           )}
@@ -730,7 +752,7 @@ function ItemDrawer({
   name: string;
   now: number;
   busyKeys: Set<string>;
-  act: (targets: Entry[], action: LineAction) => void;
+  act: ActFn;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -743,6 +765,12 @@ function ItemDrawer({
   const done = g?.done || [];
   const waiting = todo.filter((e) => e.st.status === 'waiting');
   const anyBusy = (list: Entry[]) => list.some((e) => busyKeys.has(e.key));
+
+  const serveAll = async () => {
+    const ok = await act(todo, 'ready');
+    if (ok === false) return;
+    await act(todo, 'serve');
+  };
 
   // On top of everything (sidebar + top bar too)
   return createPortal(
@@ -798,6 +826,15 @@ function ItemDrawer({
                 className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-white text-sm font-extrabold text-emerald-700 shadow-lg transition hover:bg-emerald-50 active:scale-[0.98] disabled:opacity-50"
               >
                 <CheckCheck className="h-4 w-4" /> Finish all ({g?.toCook || 0})
+              </button>
+
+                            <button
+                type="button"
+                onClick={serveAll}
+                disabled={anyBusy(todo)}
+                className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 text-sm font-extrabold text-white shadow-lg transition hover:bg-sky-600 active:scale-[0.98] disabled:opacity-50"
+              >
+                <HandPlatter className="h-4 w-4" /> Serve all
               </button>
             </div>
           )}
@@ -1362,8 +1399,8 @@ export default function KitchenDisplay() {
 
   // ---------------- actions (one person's item, or many at once) ----------------
   const act = useCallback(
-    async (targets: Entry[], action: LineAction) => {
-      if (!targets.length) return;
+    async (targets: Entry[], action: LineAction): Promise<boolean> => {
+      if (!targets.length) return true;
       const byOrder = new Map<string, Entry[]>();
       targets.forEach((t) => byOrder.set(t.order._id, [...(byOrder.get(t.order._id) || []), t]));
       const keys = targets.map((t) => t.key);
@@ -1413,6 +1450,7 @@ export default function KitchenDisplay() {
         window.setTimeout(() => setError(''), 4000);
         fetchOrders(); // show what is really saved
       }
+      return !failed;
     },
     [fetchOrders]
   );
